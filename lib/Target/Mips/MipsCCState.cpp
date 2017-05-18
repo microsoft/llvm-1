@@ -26,25 +26,19 @@ static bool isF128SoftLibCall(const char *CallSym) {
       "ceill",         "copysignl",    "cosl",          "exp2l",
       "expl",          "floorl",       "fmal",          "fmodl",
       "log10l",        "log2l",        "logl",          "nearbyintl",
-      "powl",          "rintl",        "sinl",          "sqrtl",
-      "truncl"};
-
-  const char *const *End = LibCalls + array_lengthof(LibCalls);
+      "powl",          "rintl",        "roundl",        "sinl",
+      "sqrtl",         "truncl"};
 
   // Check that LibCalls is sorted alphabetically.
-  MipsTargetLowering::LTStr Comp;
-
-#ifndef NDEBUG
-  for (const char *const *I = LibCalls; I < End - 1; ++I)
-    assert(Comp(*I, *(I + 1)));
-#endif
-
-  return std::binary_search(LibCalls, End, CallSym, Comp);
+  auto Comp = [](const char *S1, const char *S2) { return strcmp(S1, S2) < 0; };
+  assert(std::is_sorted(std::begin(LibCalls), std::end(LibCalls), Comp));
+  return std::binary_search(std::begin(LibCalls), std::end(LibCalls),
+                            CallSym, Comp);
 }
 
 /// This function returns true if Ty is fp128, {f128} or i128 which was
 /// originally a fp128.
-static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode) {
+static bool originalTypeIsF128(const Type *Ty, const char *Func) {
   if (Ty->isFP128Ty())
     return true;
 
@@ -52,12 +46,9 @@ static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode) {
       Ty->getStructElementType(0)->isFP128Ty())
     return true;
 
-  const ExternalSymbolSDNode *ES =
-      dyn_cast_or_null<const ExternalSymbolSDNode>(CallNode);
-
   // If the Ty is i128 and the function being called is a long double emulation
   // routine, then the original type is f128.
-  return (ES && Ty->isIntegerTy(128) && isF128SoftLibCall(ES->getSymbol()));
+  return (Func && Ty->isIntegerTy(128) && isF128SoftLibCall(Func));
 }
 
 MipsCCState::SpecialCallingConvType
@@ -79,11 +70,11 @@ MipsCCState::getSpecialCallingConvForCallee(const SDNode *Callee,
 
 void MipsCCState::PreAnalyzeCallResultForF128(
     const SmallVectorImpl<ISD::InputArg> &Ins,
-    const TargetLowering::CallLoweringInfo &CLI) {
+    const Type *RetTy, const char *Call) {
   for (unsigned i = 0; i < Ins.size(); ++i) {
     OriginalArgWasF128.push_back(
-        originalTypeIsF128(CLI.RetTy, CLI.Callee.getNode()));
-    OriginalArgWasFloat.push_back(CLI.RetTy->isFloatingPointTy());
+        originalTypeIsF128(RetTy, Call));
+    OriginalArgWasFloat.push_back(RetTy->isFloatingPointTy());
   }
 }
 
@@ -105,10 +96,10 @@ void MipsCCState::PreAnalyzeReturnForF128(
 void MipsCCState::PreAnalyzeCallOperands(
     const SmallVectorImpl<ISD::OutputArg> &Outs,
     std::vector<TargetLowering::ArgListEntry> &FuncArgs,
-    const SDNode *CallNode) {
+    const char *Func) {
   for (unsigned i = 0; i < Outs.size(); ++i) {
     OriginalArgWasF128.push_back(
-        originalTypeIsF128(FuncArgs[Outs[i].OrigArgIndex].Ty, CallNode));
+        originalTypeIsF128(FuncArgs[Outs[i].OrigArgIndex].Ty, Func));
     OriginalArgWasFloat.push_back(
         FuncArgs[Outs[i].OrigArgIndex].Ty->isFloatingPointTy());
     CallOperandIsFixed.push_back(Outs[i].IsFixed);

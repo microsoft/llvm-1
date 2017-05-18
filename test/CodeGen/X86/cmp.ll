@@ -49,9 +49,9 @@ define i64 @test3(i64 %x) nounwind {
   %r = zext i1 %t to i64
   ret i64 %r
 ; CHECK-LABEL: test3:
+; CHECK:  xorl %eax, %eax
 ; CHECK: 	testq	%rdi, %rdi
 ; CHECK: 	sete	%al
-; CHECK: 	movzbl	%al, %eax
 ; CHECK: 	ret
 }
 
@@ -60,9 +60,9 @@ define i64 @test4(i64 %x) nounwind {
   %r = zext i1 %t to i64
   ret i64 %r
 ; CHECK-LABEL: test4:
+; CHECK:  xorl %eax, %eax
 ; CHECK: 	testq	%rdi, %rdi
 ; CHECK: 	setle	%al
-; CHECK: 	movzbl	%al, %eax
 ; CHECK: 	ret
 }
 
@@ -210,4 +210,125 @@ define zeroext i1 @test15(i32 %bf.load, i32 %n) {
 ; CHECK-LABEL: test15:
 ; CHECK:  shrl	$16, %edi
 ; CHECK:  cmpl	%esi, %edi
+}
+
+define i8 @test16(i16 signext %L) {
+  %lshr  = lshr i16 %L, 15
+  %trunc = trunc i16 %lshr to i8
+  %not   = xor i8 %trunc, 1
+  ret i8 %not
+
+; CHECK-LABEL: test16:
+; CHECK:  testw   %di, %di
+; CHECK:  setns   %al
+}
+
+define i8 @test17(i32 %L) {
+  %lshr  = lshr i32 %L, 31
+  %trunc = trunc i32 %lshr to i8
+  %not   = xor i8 %trunc, 1
+  ret i8 %not
+
+; CHECK-LABEL: test17:
+; CHECK:  testl   %edi, %edi
+; CHECK:  setns   %al
+}
+
+define i8 @test18(i64 %L) {
+  %lshr  = lshr i64 %L, 63
+  %trunc = trunc i64 %lshr to i8
+  %not   = xor i8 %trunc, 1
+  ret i8 %not
+
+; CHECK-LABEL: test18:
+; CHECK:  testq   %rdi, %rdi
+; CHECK:  setns   %al
+}
+
+define zeroext i1 @test19(i32 %L) {
+  %lshr  = lshr i32 %L, 31
+  %trunc = trunc i32 %lshr to i1
+  %not   = xor i1 %trunc, 1
+  ret i1 %not
+
+; CHECK-LABEL: test19:
+; CHECK:  testl   %edi, %edi
+; CHECK:  setns   %al
+}
+
+@d = global i8 0, align 1
+
+; This test failed due to incorrect handling of "shift + icmp" sequence
+define void @test20(i32 %bf.load, i8 %x1, i8* %b_addr) {
+  %bf.shl = shl i32 %bf.load, 8
+  %bf.ashr = ashr exact i32 %bf.shl, 8
+  %tobool4 = icmp ne i32 %bf.ashr, 0
+  %conv = zext i1 %tobool4 to i32
+  %conv6 = zext i8 %x1 to i32
+  %add = add nuw nsw i32 %conv, %conv6
+  %tobool7 = icmp ne i32 %add, 0
+  %frombool = zext i1 %tobool7 to i8
+  store i8 %frombool, i8* %b_addr, align 1
+  %tobool14 = icmp ne i32 %bf.shl, 0
+  %frombool15 = zext i1 %tobool14 to i8
+  store i8 %frombool15, i8* @d, align 1
+  ret void
+
+; CHECK-LABEL: test20
+; CHECK: andl
+; CHECK: setne
+; CHECK: addl
+; CHECK: setne
+; CHECK: testl
+; CHECK: setne
+}
+
+define i32 @test21(i64 %val) {
+  %and = and i64 %val, -2199023255552 ; 0xFFFFFE0000000000
+  %cmp = icmp ne i64 %and, 0
+  %ret = zext i1 %cmp to i32
+  ret i32 %ret
+
+; CHECK-LABEL: test21
+; CHECK: shrq $41, %rdi
+; CHECK-NOT: test
+; CHECK: setne %al
+; CHECK: retq
+}
+
+; AND-to-SHR transformation is enabled for eq/ne condition codes only.
+define i32 @test22(i64 %val) {
+  %and = and i64 %val, -2199023255552 ; 0xFFFFFE0000000000
+  %cmp = icmp ult i64 %and, 0
+  %ret = zext i1 %cmp to i32
+  ret i32 %ret
+
+; CHECK-LABEL: test22
+; CHECK-NOT: shrq $41
+; CHECK: retq
+}
+
+define i32 @test23(i64 %val) {
+  %and = and i64 %val, -1048576 ; 0xFFFFFFFFFFF00000
+  %cmp = icmp ne i64 %and, 0
+  %ret = zext i1 %cmp to i32
+  ret i32 %ret
+
+; CHECK-LABEL: test23
+; CHECK: testq $-1048576, %rdi
+; CHECK: setne %al
+; CHECK: retq
+}
+
+define i32 @test24(i64 %val) {
+  %and = and i64 %val, 281474976710655 ; 0x0000FFFFFFFFFFFF
+  %cmp = icmp ne i64 %and, 0
+  %ret = zext i1 %cmp to i32
+  ret i32 %ret
+
+; CHECK-LABEL: test24
+; CHECK: shlq $16, %rdi
+; CHECK-NOT: test
+; CHECK: setne %al
+; CHECK: retq
 }

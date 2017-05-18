@@ -120,13 +120,17 @@ static std::string formatSymbol(const Dumper::Context &Ctx,
 
   SymbolRef Symbol;
   if (!Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData)) {
-    if (ErrorOr<StringRef> Name = Symbol.getName()) {
+    Expected<StringRef> Name = Symbol.getName();
+    if (Name) {
       OS << *Name;
       if (Displacement > 0)
         OS << format(" +0x%X (0x%" PRIX64 ")", Displacement, Offset);
       else
         OS << format(" (0x%" PRIX64 ")", Offset);
       return OS.str();
+    } else {
+      // TODO: Actually report errors helpfully.
+      consumeError(Name.takeError());
     }
   }
 
@@ -144,16 +148,15 @@ static std::error_code resolveRelocation(const Dumper::Context &Ctx,
           Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData))
     return EC;
 
-  ErrorOr<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
-  if (std::error_code EC = ResolvedAddressOrErr.getError())
-    return EC;
+  Expected<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
+  if (!ResolvedAddressOrErr)
+    return errorToErrorCode(ResolvedAddressOrErr.takeError());
   ResolvedAddress = *ResolvedAddressOrErr;
 
-  section_iterator SI = Ctx.COFF.section_begin();
-  if (std::error_code EC = Symbol.getSection(SI))
-    return EC;
-
-  ResolvedSection = Ctx.COFF.getCOFFSection(*SI);
+  Expected<section_iterator> SI = Symbol.getSection();
+  if (!SI)
+    return errorToErrorCode(SI.takeError());
+  ResolvedSection = Ctx.COFF.getCOFFSection(**SI);
   return std::error_code();
 }
 
@@ -257,7 +260,7 @@ void Dumper::printUnwindInfo(const Context &Ctx, const coff_section *Section,
         return;
       }
 
-      printUnwindCode(UI, ArrayRef<UnwindCode>(UCI, UCE));
+      printUnwindCode(UI, makeArrayRef(UCI, UCE));
       UCI = UCI + UsedSlots - 1;
     }
   }

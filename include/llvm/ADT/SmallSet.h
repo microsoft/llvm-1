@@ -17,7 +17,11 @@
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Compiler.h"
+#include <cstddef>
+#include <functional>
 #include <set>
+#include <utility>
 
 namespace llvm {
 
@@ -28,7 +32,7 @@ namespace llvm {
 ///
 /// Note that this set does not provide a way to iterate over members in the
 /// set.
-template <typename T, unsigned N,  typename C = std::less<T> >
+template <typename T, unsigned N, typename C = std::less<T>>
 class SmallSet {
   /// Use a SmallVector to hold the elements here (even though it will never
   /// reach its 'large' stage) to avoid calling the default ctors of elements
@@ -37,11 +41,18 @@ class SmallSet {
   std::set<T, C> Set;
   typedef typename SmallVector<T, N>::const_iterator VIterator;
   typedef typename SmallVector<T, N>::iterator mutable_iterator;
+
+  // In small mode SmallPtrSet uses linear search for the elements, so it is
+  // not a good idea to choose this value too high. You may consider using a
+  // DenseSet<> instead if you expect many elements in the set.
+  static_assert(N <= 32, "N should be small");
+
 public:
   typedef size_t size_type;
-  SmallSet() {}
 
-  bool LLVM_ATTRIBUTE_UNUSED_RESULT empty() const {
+  SmallSet() = default;
+
+  LLVM_NODISCARD bool empty() const {
     return Vector.empty() && Set.empty();
   }
 
@@ -92,7 +103,7 @@ public:
     for (; I != E; ++I)
       insert(*I);
   }
-  
+
   bool erase(const T &V) {
     if (!isSmall())
       return Set.erase(V);
@@ -108,6 +119,7 @@ public:
     Vector.clear();
     Set.clear();
   }
+
 private:
   bool isSmall() const { return Set.empty(); }
 
@@ -126,4 +138,4 @@ class SmallSet<PointeeType*, N> : public SmallPtrSet<PointeeType*, N> {};
 
 } // end namespace llvm
 
-#endif
+#endif // LLVM_ADT_SMALLSET_H

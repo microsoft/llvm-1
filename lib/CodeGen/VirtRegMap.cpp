@@ -19,7 +19,6 @@
 #include "llvm/CodeGen/VirtRegMap.h"
 #include "LiveDebugVariables.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SparseSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/LiveStackAnalysis.h"
@@ -29,7 +28,6 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -75,8 +73,9 @@ void VirtRegMap::grow() {
 }
 
 unsigned VirtRegMap::createSpillSlot(const TargetRegisterClass *RC) {
-  int SS = MF->getFrameInfo()->CreateSpillStackObject(RC->getSize(),
-                                                      RC->getAlignment());
+  unsigned Size = TRI->getSpillSize(*RC);
+  unsigned Align = TRI->getSpillAlignment(*RC);
+  int SS = MF->getFrameInfo().CreateSpillStackObject(Size, Align);
   ++NumSpillSlots;
   return SS;
 }
@@ -84,7 +83,7 @@ unsigned VirtRegMap::createSpillSlot(const TargetRegisterClass *RC) {
 bool VirtRegMap::hasPreferredPhys(unsigned VirtReg) {
   unsigned Hint = MRI->getSimpleHint(VirtReg);
   if (!Hint)
-    return 0;
+    return false;
   if (TargetRegisterInfo::isVirtualRegister(Hint))
     Hint = getPhys(Hint);
   return getPhys(VirtReg) == Hint;
@@ -112,7 +111,7 @@ void VirtRegMap::assignVirt2StackSlot(unsigned virtReg, int SS) {
   assert(Virt2StackSlotMap[virtReg] == NO_STACK_SLOT &&
          "attempt to assign stack slot to already spilled register");
   assert((SS >= 0 ||
-          (SS >= MF->getFrameInfo()->getObjectIndexBegin())) &&
+          (SS >= MF->getFrameInfo().getObjectIndexBegin())) &&
          "illegal fixed frame index");
   Virt2StackSlotMap[virtReg] = SS;
 }
@@ -139,7 +138,7 @@ void VirtRegMap::print(raw_ostream &OS, const Module*) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void VirtRegMap::dump() const {
+LLVM_DUMP_METHOD void VirtRegMap::dump() const {
   print(dbgs());
 }
 #endif
@@ -167,6 +166,10 @@ class VirtRegRewriter : public MachineFunctionPass {
   void rewrite();
   void addMBBLiveIns();
   bool readsUndefSubreg(const MachineOperand &MO) const;
+  void addLiveInsForSubRanges(const LiveInterval &LI, unsigned PhysReg) const;
+  void handleIdentityCopy(MachineInstr &MI) const;
+  void expandCopyBundle(MachineInstr &MI) const;
+
 public:
   static char ID;
   VirtRegRewriter() : MachineFunctionPass(ID) {}
@@ -174,6 +177,10 @@ public:
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 
   bool runOnMachineFunction(MachineFunction&) override;
+  MachineFunctionProperties getSetProperties() const override {
+    return MachineFunctionProperties().set(
+        MachineFunctionProperties::Property::NoVRegs);
+  }
 };
 } // end anonymous namespace
 
@@ -236,10 +243,52 @@ bool VirtRegRewriter::runOnMachineFunction(MachineFunction &fn) {
   return true;
 }
 
+void VirtRegRewriter::addLiveInsForSubRanges(const LiveInterval &LI,
+                                             unsigned PhysReg) const {
+  assert(!LI.empty());
+  assert(LI.hasSubRanges());
+
+  typedef std::pair<const LiveInterval::SubRange *,
+                    LiveInterval::const_iterator> SubRangeIteratorPair;
+  SmallVector<SubRangeIteratorPair, 4> SubRanges;
+  SlotIndex First;
+  SlotIndex Last;
+  for (const LiveInterval::SubRange &SR : LI.subranges()) {
+    SubRanges.push_back(std::make_pair(&SR, SR.begin()));
+    if (!First.isValid() || SR.segments.front().start < First)
+      First = SR.segments.front().start;
+    if (!Last.isValid() || SR.segments.back().end > Last)
+      Last = SR.segments.back().end;
+  }
+
+  // Check all mbb start positions between First and Last while
+  // simulatenously advancing an iterator for each subrange.
+  for (SlotIndexes::MBBIndexIterator MBBI = Indexes->findMBBIndex(First);
+       MBBI != Indexes->MBBIndexEnd() && MBBI->first <= Last; ++MBBI) {
+    SlotIndex MBBBegin = MBBI->first;
+    // Advance all subrange iterators so that their end position is just
+    // behind MBBBegin (or the iterator is at the end).
+    LaneBitmask LaneMask;
+    for (auto &RangeIterPair : SubRanges) {
+      const LiveInterval::SubRange *SR = RangeIterPair.first;
+      LiveInterval::const_iterator &SRI = RangeIterPair.second;
+      while (SRI != SR->end() && SRI->end <= MBBBegin)
+        ++SRI;
+      if (SRI == SR->end())
+        continue;
+      if (SRI->start <= MBBBegin)
+        LaneMask |= SR->LaneMask;
+    }
+    if (LaneMask.none())
+      continue;
+    MachineBasicBlock *MBB = MBBI->second;
+    MBB->addLiveIn(PhysReg, LaneMask);
+  }
+}
+
 // Compute MBB live-in lists from virtual register live ranges and their
 // assignments.
 void VirtRegRewriter::addMBBLiveIns() {
-  SmallVector<MachineBasicBlock*, 16> LiveIn;
   for (unsigned Idx = 0, IdxE = MRI->getNumVirtRegs(); Idx != IdxE; ++Idx) {
     unsigned VirtReg = TargetRegisterInfo::index2VirtReg(Idx);
     if (MRI->reg_nodbg_empty(VirtReg))
@@ -253,31 +302,18 @@ void VirtRegRewriter::addMBBLiveIns() {
     assert(PhysReg != VirtRegMap::NO_PHYS_REG && "Unmapped virtual register.");
 
     if (LI.hasSubRanges()) {
-      for (LiveInterval::SubRange &S : LI.subranges()) {
-        for (const auto &Seg : S.segments) {
-          if (!Indexes->findLiveInMBBs(Seg.start, Seg.end, LiveIn))
-            continue;
-          for (MCSubRegIndexIterator SR(PhysReg, TRI); SR.isValid(); ++SR) {
-            unsigned SubReg = SR.getSubReg();
-            unsigned SubRegIndex = SR.getSubRegIndex();
-            unsigned SubRegLaneMask = TRI->getSubRegIndexLaneMask(SubRegIndex);
-            if ((SubRegLaneMask & S.LaneMask) == 0)
-              continue;
-            for (unsigned i = 0, e = LiveIn.size(); i != e; ++i) {
-              LiveIn[i]->addLiveIn(SubReg);
-            }
-          }
-          LiveIn.clear();
-        }
-      }
+      addLiveInsForSubRanges(LI, PhysReg);
     } else {
-      // Scan the segments of LI.
-      for (const auto &Seg : LI.segments) {
-        if (!Indexes->findLiveInMBBs(Seg.start, Seg.end, LiveIn))
-          continue;
-        for (unsigned i = 0, e = LiveIn.size(); i != e; ++i)
-          LiveIn[i]->addLiveIn(PhysReg);
-        LiveIn.clear();
+      // Go over MBB begin positions and see if we have segments covering them.
+      // The following works because segments and the MBBIndex list are both
+      // sorted by slot indexes.
+      SlotIndexes::MBBIndexIterator I = Indexes->MBBIndexBegin();
+      for (const auto &Seg : LI) {
+        I = Indexes->advanceMBBIndex(I, Seg.start);
+        for (; I != Indexes->MBBIndexEnd() && I->first < Seg.end; ++I) {
+          MachineBasicBlock *MBB = I->second;
+          MBB->addLiveIn(PhysReg);
+        }
       }
     }
   }
@@ -298,19 +334,74 @@ bool VirtRegRewriter::readsUndefSubreg(const MachineOperand &MO) const {
   unsigned Reg = MO.getReg();
   const LiveInterval &LI = LIS->getInterval(Reg);
   const MachineInstr &MI = *MO.getParent();
-  SlotIndex BaseIndex = LIS->getInstructionIndex(&MI);
+  SlotIndex BaseIndex = LIS->getInstructionIndex(MI);
   // This code is only meant to handle reading undefined subregisters which
   // we couldn't properly detect before.
   assert(LI.liveAt(BaseIndex) &&
          "Reads of completely dead register should be marked undef already");
   unsigned SubRegIdx = MO.getSubReg();
-  unsigned UseMask = TRI->getSubRegIndexLaneMask(SubRegIdx);
+  assert(SubRegIdx != 0 && LI.hasSubRanges());
+  LaneBitmask UseMask = TRI->getSubRegIndexLaneMask(SubRegIdx);
   // See if any of the relevant subregister liveranges is defined at this point.
   for (const LiveInterval::SubRange &SR : LI.subranges()) {
-    if ((SR.LaneMask & UseMask) != 0 && SR.liveAt(BaseIndex))
+    if ((SR.LaneMask & UseMask).any() && SR.liveAt(BaseIndex))
       return false;
   }
   return true;
+}
+
+void VirtRegRewriter::handleIdentityCopy(MachineInstr &MI) const {
+  if (!MI.isIdentityCopy())
+    return;
+  DEBUG(dbgs() << "Identity copy: " << MI);
+  ++NumIdCopies;
+
+  // Copies like:
+  //    %R0 = COPY %R0<undef>
+  //    %AL = COPY %AL, %EAX<imp-def>
+  // give us additional liveness information: The target (super-)register
+  // must not be valid before this point. Replace the COPY with a KILL
+  // instruction to maintain this information.
+  if (MI.getOperand(0).isUndef() || MI.getNumOperands() > 2) {
+    MI.setDesc(TII->get(TargetOpcode::KILL));
+    DEBUG(dbgs() << "  replace by: " << MI);
+    return;
+  }
+
+  if (Indexes)
+    Indexes->removeSingleMachineInstrFromMaps(MI);
+  MI.eraseFromBundle();
+  DEBUG(dbgs() << "  deleted.\n");
+}
+
+/// The liverange splitting logic sometimes produces bundles of copies when
+/// subregisters are involved. Expand these into a sequence of copy instructions
+/// after processing the last in the bundle. Does not update LiveIntervals
+/// which we shouldn't need for this instruction anymore.
+void VirtRegRewriter::expandCopyBundle(MachineInstr &MI) const {
+  if (!MI.isCopy())
+    return;
+
+  if (MI.isBundledWithPred() && !MI.isBundledWithSucc()) {
+    // Only do this when the complete bundle is made out of COPYs.
+    MachineBasicBlock &MBB = *MI.getParent();
+    for (MachineBasicBlock::reverse_instr_iterator I =
+         std::next(MI.getReverseIterator()), E = MBB.instr_rend();
+         I != E && I->isBundledWithSucc(); ++I) {
+      if (!I->isCopy())
+        return;
+    }
+
+    for (MachineBasicBlock::reverse_instr_iterator I = MI.getReverseIterator();
+         I->isBundledWithPred(); ) {
+      MachineInstr &MI = *I;
+      ++I;
+
+      MI.unbundleFromPred();
+      if (Indexes)
+        Indexes->insertMachineInstrInMaps(MI);
+    }
+  }
 }
 
 void VirtRegRewriter::rewrite() {
@@ -324,7 +415,7 @@ void VirtRegRewriter::rewrite() {
     DEBUG(MBBI->print(dbgs(), Indexes));
     for (MachineBasicBlock::instr_iterator
            MII = MBBI->instr_begin(), MIE = MBBI->instr_end(); MII != MIE;) {
-      MachineInstr *MI = MII;
+      MachineInstr *MI = &*MII;
       ++MII;
 
       for (MachineInstr::mop_iterator MOI = MI->operands_begin(),
@@ -369,23 +460,17 @@ void VirtRegRewriter::rewrite() {
                 MO.setIsUndef(true);
             } else if (!MO.isDead()) {
               assert(MO.isDef());
-              // Things get tricky when we ran out of lane mask bits and
-              // merged multiple lanes into the overflow bit: In this case
-              // our subregister liveness tracking isn't precise and we can't
-              // know what subregister parts are undefined, fall back to the
-              // implicit super-register def then.
-              unsigned LaneMask = TRI->getSubRegIndexLaneMask(SubReg);
-              if (TargetRegisterInfo::isImpreciseLaneMask(LaneMask))
-                SuperDefs.push_back(PhysReg);
             }
           }
 
-          // The <def,undef> flag only makes sense for sub-register defs, and
-          // we are substituting a full physreg.  An <imp-use,kill> operand
-          // from the SuperKills list will represent the partial read of the
-          // super-register.
-          if (MO.isDef())
+          // The <def,undef> and <def,internal> flags only make sense for
+          // sub-register defs, and we are substituting a full physreg.  An
+          // <imp-use,kill> operand from the SuperKills list will represent the
+          // partial read of the super-register.
+          if (MO.isDef()) {
             MO.setIsUndef(false);
+            MO.setIsInternalRead(false);
+          }
 
           // PhysReg operands cannot have subregister indexes.
           PhysReg = TRI->getSubReg(PhysReg, SubReg);
@@ -410,16 +495,10 @@ void VirtRegRewriter::rewrite() {
 
       DEBUG(dbgs() << "> " << *MI);
 
-      // Finally, remove any identity copies.
-      if (MI->isIdentityCopy()) {
-        ++NumIdCopies;
-        DEBUG(dbgs() << "Deleting identity copy.\n");
-        if (Indexes)
-          Indexes->removeMachineInstrFromMaps(MI);
-        // It's safe to erase MI because MII has already been incremented.
-        MI->eraseFromParent();
-      }
+      expandCopyBundle(*MI);
+
+      // We can remove identity copies right now.
+      handleIdentityCopy(*MI);
     }
   }
 }
-

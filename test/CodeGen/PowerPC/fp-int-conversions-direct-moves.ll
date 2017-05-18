@@ -1,5 +1,5 @@
-; RUN: llc -mcpu=pwr8 -mtriple=powerpc64-unknown-unknown < %s | FileCheck %s
-; RUN: llc -mcpu=pwr8 -mtriple=powerpc64le-unknown-unknown < %s | FileCheck %s
+; RUN: llc -verify-machineinstrs -mcpu=pwr8 -mtriple=powerpc64-unknown-unknown < %s | FileCheck %s
+; RUN: llc -verify-machineinstrs -mcpu=pwr8 -mtriple=powerpc64le-unknown-unknown < %s | FileCheck %s
 
 ; Function Attrs: nounwind
 define zeroext i8 @_Z6testcff(float %arg) {
@@ -24,8 +24,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z6testfcc
 ; CHECK: mtvsrwz [[MOVEREG01:[0-9]+]], 3
-; FIXME: Once we have XSCVUXDSP implemented, this will change
-; CHECK: fcfidus 1, [[MOVEREG01]]
+; CHECK: xscvuxdsp 1, [[MOVEREG01]]
 }
 
 ; Function Attrs: nounwind
@@ -77,8 +76,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z7testfuch
 ; CHECK: mtvsrwz [[MOVEREG03:[0-9]+]], 3
-; FIXME: Once we have XSCVUXDSP implemented, this will change
-; CHECK: fcfidus 1, [[MOVEREG03]]
+; CHECK: xscvuxdsp 1, [[MOVEREG03]]
 }
 
 ; Function Attrs: nounwind
@@ -130,8 +128,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z6testfss
 ; CHECK: mtvsrwa [[MOVEREG05:[0-9]+]], 3
-; FIXME: Once we have XSCVSXDSP implemented, this will change
-; CHECK: fcfids 1, [[MOVEREG05]]
+; CHECK: xscvsxdsp 1, [[MOVEREG05]]
 }
 
 ; Function Attrs: nounwind
@@ -183,8 +180,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z7testfust
 ; CHECK: mtvsrwz [[MOVEREG07:[0-9]+]], 3
-; FIXME: Once we have XSCVUXDSP implemented, this will change
-; CHECK: fcfidus 1, [[MOVEREG07]]
+; CHECK: xscvuxdsp 1, [[MOVEREG07]]
 }
 
 ; Function Attrs: nounwind
@@ -236,8 +232,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z6testfii
 ; CHECK: mtvsrwa [[MOVEREG09:[0-9]+]], 3
-; FIXME: Once we have XSCVSXDSP implemented, this will change
-; CHECK: fcfids 1, [[MOVEREG09]]
+; CHECK: xscvsxdsp 1, [[MOVEREG09]]
 }
 
 ; Function Attrs: nounwind
@@ -289,8 +284,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z7testfuij
 ; CHECK: mtvsrwz [[MOVEREG11:[0-9]+]], 3
-; FIXME: Once we have XSCVUXDSP implemented, this will change
-; CHECK: fcfidus 1, [[MOVEREG11]]
+; CHECK: xscvuxdsp 1, [[MOVEREG11]]
 }
 
 ; Function Attrs: nounwind
@@ -329,7 +323,7 @@ entry:
   ret i64 %conv
 ; CHECK-LABEL: @_Z7testllff
 ; CHECK: xscvdpsxds [[CONVREG13:[0-9]+]], 1
-; CHECK: mfvsrd 3, [[CONVREG13]]
+; CHECK: mffprd 3, [[CONVREG13]]
 }
 
 ; Function Attrs: nounwind
@@ -342,8 +336,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL:@_Z7testfllx
 ; CHECK: mtvsrd [[MOVEREG13:[0-9]+]], 3
-; FIXME: Once we have XSCVSXDSP implemented, this will change
-; CHECK: fcfids 1, [[MOVEREG13]]
+; CHECK: xscvsxdsp 1, [[MOVEREG13]]
 }
 
 ; Function Attrs: nounwind
@@ -356,7 +349,7 @@ entry:
   ret i64 %conv
 ; CHECK-LABEL: @_Z7testlldd
 ; CHECK: xscvdpsxds [[CONVREG14:[0-9]+]], 1
-; CHECK: mfvsrd 3, [[CONVREG14]]
+; CHECK: mffprd 3, [[CONVREG14]]
 }
 
 ; Function Attrs: nounwind
@@ -382,7 +375,7 @@ entry:
   ret i64 %conv
 ; CHECK-LABEL: @_Z8testullff
 ; CHECK: xscvdpuxds [[CONVREG15:[0-9]+]], 1
-; CHECK: mfvsrd 3, [[CONVREG15]]
+; CHECK: mffprd 3, [[CONVREG15]]
 }
 
 ; Function Attrs: nounwind
@@ -395,8 +388,7 @@ entry:
   ret float %conv
 ; CHECK-LABEL: @_Z8testfully
 ; CHECK: mtvsrd [[MOVEREG15:[0-9]+]], 3
-; FIXME: Once we have XSCVUXDSP implemented, this will change
-; CHECK: fcfidus 1, [[MOVEREG15]]
+; CHECK: xscvuxdsp 1, [[MOVEREG15]]
 }
 
 ; Function Attrs: nounwind
@@ -409,7 +401,7 @@ entry:
   ret i64 %conv
 ; CHECK-LABEL: @_Z8testulldd
 ; CHECK: xscvdpuxds [[CONVREG16:[0-9]+]], 1
-; CHECK: mfvsrd 3, [[CONVREG16]]
+; CHECK: mffprd 3, [[CONVREG16]]
 }
 
 ; Function Attrs: nounwind

@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Option/OptTable.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
@@ -84,11 +85,9 @@ static inline bool operator<(const OptTable::Info &I, const char *Name) {
 
 OptSpecifier::OptSpecifier(const Option *Opt) : ID(Opt->getID()) {}
 
-OptTable::OptTable(const Info *OptionInfos, unsigned NumOptionInfos,
-                   bool IgnoreCase)
-    : OptionInfos(OptionInfos), NumOptionInfos(NumOptionInfos),
-      IgnoreCase(IgnoreCase), TheInputOptionID(0), TheUnknownOptionID(0),
-      FirstSearchableIndex(0) {
+OptTable::OptTable(ArrayRef<Info> OptionInfos, bool IgnoreCase)
+    : OptionInfos(OptionInfos), IgnoreCase(IgnoreCase), TheInputOptionID(0),
+      TheUnknownOptionID(0), FirstSearchableIndex(0) {
   // Explicitly zero initialize the error to work around a bug in array
   // value-initialization on MinGW with gcc 4.3.5.
 
@@ -144,8 +143,7 @@ OptTable::OptTable(const Info *OptionInfos, unsigned NumOptionInfos,
     StringRef Prefix = I->getKey();
     for (StringRef::const_iterator C = Prefix.begin(), CE = Prefix.end();
                                    C != CE; ++C)
-      if (std::find(PrefixChars.begin(), PrefixChars.end(), *C)
-            == PrefixChars.end())
+      if (!is_contained(PrefixChars, *C))
         PrefixChars.push_back(*C);
   }
 }
@@ -199,8 +197,8 @@ Arg *OptTable::ParseOneArg(const ArgList &Args, unsigned &Index,
   if (isInput(PrefixesUnion, Str))
     return new Arg(getOption(TheInputOptionID), Str, Index++, Str);
 
-  const Info *Start = OptionInfos + FirstSearchableIndex;
-  const Info *End = OptionInfos + getNumOptions();
+  const Info *Start = OptionInfos.begin() + FirstSearchableIndex;
+  const Info *End = OptionInfos.end();
   StringRef Name = StringRef(Str).ltrim(PrefixChars);
 
   // Search for the first next option which could be a prefix.
@@ -317,9 +315,9 @@ static std::string getOptionHelpName(const OptTable &Opts, OptSpecifier Id) {
     break;
 
   case Option::SeparateClass: case Option::JoinedOrSeparateClass:
-  case Option::RemainingArgsClass:
+  case Option::RemainingArgsClass: case Option::RemainingArgsJoinedClass:
     Name += ' ';
-    // FALLTHROUGH
+    LLVM_FALLTHROUGH;
   case Option::JoinedClass: case Option::CommaJoinedClass:
   case Option::JoinedAndSeparateClass:
     if (const char *MetaVarName = Opts.getOptionMetaVar(Id))

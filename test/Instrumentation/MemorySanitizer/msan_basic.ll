@@ -4,7 +4,7 @@
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-; CHECK: @llvm.global_ctors {{.*}} @msan.module_ctor
+; CHECK: @llvm.global_ctors {{.*}} { i32 0, void ()* @msan.module_ctor, i8* null }
 
 ; Check the presence and the linkage type of __msan_track_origins and
 ; other interface symbols.
@@ -28,7 +28,7 @@ entry:
   ret void
 }
 
-; CHECK: @Store
+; CHECK-LABEL: @Store
 ; CHECK: load {{.*}} @__msan_param_tls
 ; CHECK-ORIGINS: load {{.*}} @__msan_param_origin_tls
 ; CHECK: store
@@ -52,7 +52,7 @@ entry:
   ret void
 }
 
-; CHECK: @AlignedStore
+; CHECK-LABEL: @AlignedStore
 ; CHECK: load {{.*}} @__msan_param_tls
 ; CHECK-ORIGINS: load {{.*}} @__msan_param_origin_tls
 ; CHECK: store {{.*}} align 32
@@ -83,7 +83,7 @@ if.end:                                           ; preds = %entry, %if.then
 
 declare void @foo(...)
 
-; CHECK: @LoadAndCmp
+; CHECK-LABEL: @LoadAndCmp
 ; CHECK: = load
 ; CHECK: = load
 ; CHECK: call void @__msan_warning_noreturn()
@@ -97,7 +97,7 @@ entry:
   ret i32 123
 }
 
-; CHECK: @ReturnInt
+; CHECK-LABEL: @ReturnInt
 ; CHECK: store i32 0,{{.*}}__msan_retval_tls
 ; CHECK: ret i32
 
@@ -109,7 +109,7 @@ entry:
   ret void
 }
 
-; CHECK: @CopyRetVal
+; CHECK-LABEL: @CopyRetVal
 ; CHECK: load{{.*}}__msan_retval_tls
 ; CHECK: store
 ; CHECK: store
@@ -136,7 +136,7 @@ entry:
   ret void
 }
 
-; CHECK: @FuncWithPhi
+; CHECK-LABEL: @FuncWithPhi
 ; CHECK: = phi
 ; CHECK-NEXT: = phi
 ; CHECK: store
@@ -152,7 +152,7 @@ entry:
   ret void
 }
 
-; CHECK: @ShlConst
+; CHECK-LABEL: @ShlConst
 ; CHECK: = load
 ; CHECK: = load
 ; CHECK: shl
@@ -170,7 +170,7 @@ entry:
   ret void
 }
 
-; CHECK: @ShlNonConst
+; CHECK-LABEL: @ShlNonConst
 ; CHECK: = load
 ; CHECK: = load
 ; CHECK: = sext i1
@@ -187,7 +187,7 @@ entry:
   ret void
 }
 
-; CHECK: @SExt
+; CHECK-LABEL: @SExt
 ; CHECK: = load
 ; CHECK: = load
 ; CHECK: = sext
@@ -206,7 +206,7 @@ entry:
 
 declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i32, i1) nounwind
 
-; CHECK: @MemSet
+; CHECK-LABEL: @MemSet
 ; CHECK: call i8* @__msan_memset
 ; CHECK: ret void
 
@@ -220,7 +220,7 @@ entry:
 
 declare void @llvm.memcpy.p0i8.p0i8.i64(i8* nocapture, i8* nocapture, i64, i32, i1) nounwind
 
-; CHECK: @MemCpy
+; CHECK-LABEL: @MemCpy
 ; CHECK: call i8* @__msan_memcpy
 ; CHECK: ret void
 
@@ -234,7 +234,7 @@ entry:
 
 declare void @llvm.memmove.p0i8.p0i8.i64(i8* nocapture, i8* nocapture, i64, i32, i1) nounwind
 
-; CHECK: @MemMove
+; CHECK-LABEL: @MemMove
 ; CHECK: call i8* @__msan_memmove
 ; CHECK: ret void
 
@@ -247,7 +247,7 @@ entry:
   ret i32 %cond
 }
 
-; CHECK: @Select
+; CHECK-LABEL: @Select
 ; CHECK: select i1
 ; CHECK-DAG: or i32
 ; CHECK-DAG: xor i32
@@ -271,7 +271,7 @@ entry:
   ret <8 x i16> %cond
 }
 
-; CHECK: @SelectVector
+; CHECK-LABEL: @SelectVector
 ; CHECK: select <8 x i1>
 ; CHECK-DAG: or <8 x i16>
 ; CHECK-DAG: xor <8 x i16>
@@ -295,7 +295,7 @@ entry:
   ret <8 x i16> %cond
 }
 
-; CHECK: @SelectVector2
+; CHECK-LABEL: @SelectVector2
 ; CHECK: select i1
 ; CHECK-DAG: or <8 x i16>
 ; CHECK-DAG: xor <8 x i16>
@@ -313,7 +313,7 @@ entry:
   ret { i64, i64 } %c
 }
 
-; CHECK: @SelectStruct
+; CHECK-LABEL: @SelectStruct
 ; CHECK: select i1 {{.*}}, { i64, i64 }
 ; CHECK-NEXT: select i1 {{.*}}, { i64, i64 } { i64 -1, i64 -1 }, { i64, i64 }
 ; CHECK-ORIGINS: select i1
@@ -328,7 +328,7 @@ entry:
   ret { i64*, double } %c
 }
 
-; CHECK: @SelectStruct2
+; CHECK-LABEL: @SelectStruct2
 ; CHECK: select i1 {{.*}}, { i64, i64 }
 ; CHECK-NEXT: select i1 {{.*}}, { i64, i64 } { i64 -1, i64 -1 }, { i64, i64 }
 ; CHECK-ORIGINS: select i1
@@ -343,7 +343,7 @@ entry:
   ret i8* %0
 }
 
-; CHECK: @IntToPtr
+; CHECK-LABEL: @IntToPtr
 ; CHECK: load i64, i64*{{.*}}__msan_param_tls
 ; CHECK-ORIGINS-NEXT: load i32, i32*{{.*}}__msan_param_origin_tls
 ; CHECK-NEXT: inttoptr
@@ -357,7 +357,7 @@ entry:
   ret i8* %0
 }
 
-; CHECK: @IntToPtr_ZExt
+; CHECK-LABEL: @IntToPtr_ZExt
 ; CHECK: load i16, i16*{{.*}}__msan_param_tls
 ; CHECK: zext
 ; CHECK-NEXT: inttoptr
@@ -374,7 +374,7 @@ entry:
   ret i32 %div
 }
 
-; CHECK: @Div
+; CHECK-LABEL: @Div
 ; CHECK: icmp
 ; CHECK: call void @__msan_warning
 ; CHECK-NOT: icmp
@@ -385,48 +385,99 @@ entry:
 
 ; Check that we propagate shadow for x<0, x>=0, etc (i.e. sign bit tests)
 
-define zeroext i1 @ICmpSLT(i32 %x) nounwind uwtable readnone sanitize_memory {
+define zeroext i1 @ICmpSLTZero(i32 %x) nounwind uwtable readnone sanitize_memory {
   %1 = icmp slt i32 %x, 0
   ret i1 %1
 }
 
-; CHECK: @ICmpSLT
+; CHECK-LABEL: @ICmpSLTZero
 ; CHECK: icmp slt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp slt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: ret i1
 
-define zeroext i1 @ICmpSGE(i32 %x) nounwind uwtable readnone sanitize_memory {
+define zeroext i1 @ICmpSGEZero(i32 %x) nounwind uwtable readnone sanitize_memory {
   %1 = icmp sge i32 %x, 0
   ret i1 %1
 }
 
-; CHECK: @ICmpSGE
+; CHECK-LABEL: @ICmpSGEZero
 ; CHECK: icmp slt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp sge
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: ret i1
 
-define zeroext i1 @ICmpSGT(i32 %x) nounwind uwtable readnone sanitize_memory {
+define zeroext i1 @ICmpSGTZero(i32 %x) nounwind uwtable readnone sanitize_memory {
   %1 = icmp sgt i32 0, %x
   ret i1 %1
 }
 
-; CHECK: @ICmpSGT
+; CHECK-LABEL: @ICmpSGTZero
 ; CHECK: icmp slt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp sgt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: ret i1
 
-define zeroext i1 @ICmpSLE(i32 %x) nounwind uwtable readnone sanitize_memory {
+define zeroext i1 @ICmpSLEZero(i32 %x) nounwind uwtable readnone sanitize_memory {
   %1 = icmp sle i32 0, %x
   ret i1 %1
 }
 
-; CHECK: @ICmpSLE
+; CHECK-LABEL: @ICmpSLEZero
+; CHECK: icmp slt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp sle
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret i1
+
+
+; Check that we propagate shadow for x<=-1, x>-1, etc (i.e. sign bit tests)
+
+define zeroext i1 @ICmpSLTAllOnes(i32 %x) nounwind uwtable readnone sanitize_memory {
+  %1 = icmp slt i32 -1, %x
+  ret i1 %1
+}
+
+; CHECK-LABEL: @ICmpSLTAllOnes
+; CHECK: icmp slt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp slt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret i1
+
+define zeroext i1 @ICmpSGEAllOnes(i32 %x) nounwind uwtable readnone sanitize_memory {
+  %1 = icmp sge i32 -1, %x
+  ret i1 %1
+}
+
+; CHECK-LABEL: @ICmpSGEAllOnes
+; CHECK: icmp slt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp sge
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret i1
+
+define zeroext i1 @ICmpSGTAllOnes(i32 %x) nounwind uwtable readnone sanitize_memory {
+  %1 = icmp sgt i32 %x, -1
+  ret i1 %1
+}
+
+; CHECK-LABEL: @ICmpSGTAllOnes
+; CHECK: icmp slt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp sgt
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret i1
+
+define zeroext i1 @ICmpSLEAllOnes(i32 %x) nounwind uwtable readnone sanitize_memory {
+  %1 = icmp sle i32 %x, -1
+  ret i1 %1
+}
+
+; CHECK-LABEL: @ICmpSLEAllOnes
 ; CHECK: icmp slt
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp sle
@@ -437,15 +488,30 @@ define zeroext i1 @ICmpSLE(i32 %x) nounwind uwtable readnone sanitize_memory {
 ; Check that we propagate shadow for x<0, x>=0, etc (i.e. sign bit tests)
 ; of the vector arguments.
 
-define <2 x i1> @ICmpSLT_vector(<2 x i32*> %x) nounwind uwtable readnone sanitize_memory {
+define <2 x i1> @ICmpSLT_vector_Zero(<2 x i32*> %x) nounwind uwtable readnone sanitize_memory {
   %1 = icmp slt <2 x i32*> %x, zeroinitializer
   ret <2 x i1> %1
 }
 
-; CHECK: @ICmpSLT_vector
+; CHECK-LABEL: @ICmpSLT_vector_Zero
 ; CHECK: icmp slt <2 x i64>
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp slt <2 x i32*>
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret <2 x i1>
+
+; Check that we propagate shadow for x<=-1, x>0, etc (i.e. sign bit tests)
+; of the vector arguments.
+
+define <2 x i1> @ICmpSLT_vector_AllOnes(<2 x i32> %x) nounwind uwtable readnone sanitize_memory {
+  %1 = icmp slt <2 x i32> <i32 -1, i32 -1>, %x
+  ret <2 x i1> %1
+}
+
+; CHECK-LABEL: @ICmpSLT_vector_AllOnes
+; CHECK: icmp slt <2 x i32>
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp slt <2 x i32>
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: ret <2 x i1>
 
@@ -459,7 +525,7 @@ entry:
   ret i1 %cmp
 }
 
-; CHECK: @ICmpUGTConst
+; CHECK-LABEL: @ICmpUGTConst
 ; CHECK: icmp ugt i32
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: icmp ugt i32
@@ -478,7 +544,7 @@ define i32 @ShadowLoadAlignmentLarge() nounwind uwtable sanitize_memory {
   ret i32 %1
 }
 
-; CHECK: @ShadowLoadAlignmentLarge
+; CHECK-LABEL: @ShadowLoadAlignmentLarge
 ; CHECK: load volatile i32, i32* {{.*}} align 64
 ; CHECK: load i32, i32* {{.*}} align 64
 ; CHECK: ret i32
@@ -489,7 +555,7 @@ define i32 @ShadowLoadAlignmentSmall() nounwind uwtable sanitize_memory {
   ret i32 %1
 }
 
-; CHECK: @ShadowLoadAlignmentSmall
+; CHECK-LABEL: @ShadowLoadAlignmentSmall
 ; CHECK: load volatile i32, i32* {{.*}} align 2
 ; CHECK: load i32, i32* {{.*}} align 2
 ; CHECK-ORIGINS: load i32, i32* {{.*}} align 4
@@ -505,7 +571,7 @@ define i32 @ExtractElement(<4 x i32> %vec, i32 %idx) sanitize_memory {
   ret i32 %x
 }
 
-; CHECK: @ExtractElement
+; CHECK-LABEL: @ExtractElement
 ; CHECK: extractelement
 ; CHECK: call void @__msan_warning
 ; CHECK: extractelement
@@ -516,7 +582,7 @@ define <4 x i32> @InsertElement(<4 x i32> %vec, i32 %idx, i32 %x) sanitize_memor
   ret <4 x i32> %vec1
 }
 
-; CHECK: @InsertElement
+; CHECK-LABEL: @InsertElement
 ; CHECK: insertelement
 ; CHECK: call void @__msan_warning
 ; CHECK: insertelement
@@ -528,7 +594,7 @@ define <4 x i32> @ShuffleVector(<4 x i32> %vec, <4 x i32> %vec1) sanitize_memory
   ret <4 x i32> %vec2
 }
 
-; CHECK: @ShuffleVector
+; CHECK-LABEL: @ShuffleVector
 ; CHECK: shufflevector
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: shufflevector
@@ -543,77 +609,13 @@ define i32 @BSwap(i32 %x) nounwind uwtable readnone sanitize_memory {
 
 declare i32 @llvm.bswap.i32(i32) nounwind readnone
 
-; CHECK: @BSwap
+; CHECK-LABEL: @BSwap
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: @llvm.bswap.i32
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: @llvm.bswap.i32
 ; CHECK-NOT: call void @__msan_warning
 ; CHECK: ret i32
-
-
-; Store intrinsic.
-
-define void @StoreIntrinsic(i8* %p, <4 x float> %x) nounwind uwtable sanitize_memory {
-  call void @llvm.x86.sse.storeu.ps(i8* %p, <4 x float> %x)
-  ret void
-}
-
-declare void @llvm.x86.sse.storeu.ps(i8*, <4 x float>) nounwind
-
-; CHECK: @StoreIntrinsic
-; CHECK-NOT: br
-; CHECK-NOT: = or
-; CHECK: store <4 x i32> {{.*}} align 1
-; CHECK: call void @llvm.x86.sse.storeu.ps
-; CHECK: ret void
-
-
-; Load intrinsic.
-
-define <16 x i8> @LoadIntrinsic(i8* %p) nounwind uwtable sanitize_memory {
-  %call = call <16 x i8> @llvm.x86.sse3.ldu.dq(i8* %p)
-  ret <16 x i8> %call
-}
-
-declare <16 x i8> @llvm.x86.sse3.ldu.dq(i8* %p) nounwind
-
-; CHECK: @LoadIntrinsic
-; CHECK: load <16 x i8>, <16 x i8>* {{.*}} align 1
-; CHECK-ORIGINS: [[ORIGIN:%[01-9a-z]+]] = load i32, i32* {{.*}}
-; CHECK-NOT: br
-; CHECK-NOT: = or
-; CHECK: call <16 x i8> @llvm.x86.sse3.ldu.dq
-; CHECK: store <16 x i8> {{.*}} @__msan_retval_tls
-; CHECK-ORIGINS: store i32 {{.*}}[[ORIGIN]], i32* @__msan_retval_origin_tls
-; CHECK: ret <16 x i8>
-
-
-; Simple NoMem intrinsic
-; Check that shadow is OR'ed, and origin is Select'ed
-; And no shadow checks!
-
-define <8 x i16> @Paddsw128(<8 x i16> %a, <8 x i16> %b) nounwind uwtable sanitize_memory {
-  %call = call <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16> %a, <8 x i16> %b)
-  ret <8 x i16> %call
-}
-
-declare <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16> %a, <8 x i16> %b) nounwind
-
-; CHECK: @Paddsw128
-; CHECK-NEXT: load <8 x i16>, <8 x i16>* {{.*}} @__msan_param_tls
-; CHECK-ORIGINS: load i32, i32* {{.*}} @__msan_param_origin_tls
-; CHECK-NEXT: load <8 x i16>, <8 x i16>* {{.*}} @__msan_param_tls
-; CHECK-ORIGINS: load i32, i32* {{.*}} @__msan_param_origin_tls
-; CHECK-NEXT: = or <8 x i16>
-; CHECK-ORIGINS: = bitcast <8 x i16> {{.*}} to i128
-; CHECK-ORIGINS-NEXT: = icmp ne i128 {{.*}}, 0
-; CHECK-ORIGINS-NEXT: = select i1 {{.*}}, i32 {{.*}}, i32
-; CHECK-NEXT: call <8 x i16> @llvm.x86.sse2.padds.w
-; CHECK-NEXT: store <8 x i16> {{.*}} @__msan_retval_tls
-; CHECK-ORIGINS: store i32 {{.*}} @__msan_retval_origin_tls
-; CHECK-NEXT: ret <8 x i16>
-
 
 ; Test handling of vectors of pointers.
 ; Check that shadow of such vector is a vector of integers.
@@ -623,7 +625,7 @@ define <8 x i8*> @VectorOfPointers(<8 x i8*>* %p) nounwind uwtable sanitize_memo
   ret <8 x i8*> %x
 }
 
-; CHECK: @VectorOfPointers
+; CHECK-LABEL: @VectorOfPointers
 ; CHECK: load <8 x i8*>, <8 x i8*>*
 ; CHECK: load <8 x i64>, <8 x i64>*
 ; CHECK: store <8 x i64> {{.*}} @__msan_retval_tls
@@ -638,7 +640,7 @@ define void @VACopy(i8* %p1, i8* %p2) nounwind uwtable sanitize_memory {
   ret void
 }
 
-; CHECK: @VACopy
+; CHECK-LABEL: @VACopy
 ; CHECK: call void @llvm.memset.p0i8.i64({{.*}}, i8 0, i64 24, i32 8, i1 false)
 ; CHECK: ret void
 
@@ -661,7 +663,7 @@ entry:
   ret void
 }
 
-; CHECK: @VAStart
+; CHECK-LABEL: @VAStart
 ; CHECK: call void @llvm.va_start
 ; CHECK-NOT: @__msan_va_arg_tls
 ; CHECK-NOT: @__msan_va_arg_overflow_size_tls
@@ -677,7 +679,7 @@ entry:
   ret void
 }
 
-; CHECK: @VolatileStore
+; CHECK-LABEL: @VolatileStore
 ; CHECK-NOT: @__msan_warning
 ; CHECK: ret void
 
@@ -700,7 +702,7 @@ if.end:                                           ; preds = %entry, %if.then
 
 declare void @bar()
 
-; CHECK: @NoSanitizeMemory
+; CHECK-LABEL: @NoSanitizeMemory
 ; CHECK-NOT: @__msan_warning
 ; CHECK: store i32 0, {{.*}} @__msan_retval_tls
 ; CHECK-NOT: @__msan_warning
@@ -719,7 +721,7 @@ entry:
 
 declare i32 @NoSanitizeMemoryAllocaHelper(i32* %p)
 
-; CHECK: @NoSanitizeMemoryAlloca
+; CHECK-LABEL: @NoSanitizeMemoryAlloca
 ; CHECK: call void @llvm.memset.p0i8.i64(i8* {{.*}}, i8 0, i64 4, i32 4, i1 false)
 ; CHECK: call i32 @NoSanitizeMemoryAllocaHelper(i32*
 ; CHECK: ret i32
@@ -736,7 +738,7 @@ entry:
 
 declare i32 @NoSanitizeMemoryUndefHelper(i32 %x)
 
-; CHECK: @NoSanitizeMemoryAlloca
+; CHECK-LABEL: @NoSanitizeMemoryUndef
 ; CHECK: store i32 0, i32* {{.*}} @__msan_param_tls
 ; CHECK: call i32 @NoSanitizeMemoryUndefHelper(i32 undef)
 ; CHECK: ret i32
@@ -790,7 +792,7 @@ entry:
   ret <2 x i64> %b
 }
 
-; CHECK: @ArgumentShadowAlignment
+; CHECK-LABEL: @ArgumentShadowAlignment
 ; CHECK: load <2 x i64>, <2 x i64>* {{.*}} @__msan_param_tls {{.*}}, align 8
 ; CHECK: store <2 x i64> {{.*}} @__msan_retval_tls {{.*}}, align 8
 ; CHECK: ret <2 x i64>
@@ -847,9 +849,8 @@ entry:
 ; "undef" and the first 2 structs go to general purpose registers;
 ; the third struct goes to the overflow area byval
 
-; CHECK: @VAArgStruct
-; undef
-; CHECK: store i32 -1, i32* {{.*}}@__msan_va_arg_tls {{.*}}, align 8
+; CHECK-LABEL: @VAArgStruct
+; undef not stored to __msan_va_arg_tls - it's a fixed argument
 ; first struct through general purpose registers
 ; CHECK: store i64 {{.*}}, i64* {{.*}}@__msan_va_arg_tls{{.*}}, i64 8){{.*}}, align 8
 ; CHECK: store i64 {{.*}}, i64* {{.*}}@__msan_va_arg_tls{{.*}}, i64 16){{.*}}, align 8
@@ -863,6 +864,7 @@ entry:
 ; CHECK: store i64 16, i64* @__msan_va_arg_overflow_size_tls
 ; CHECK: call void (i32, ...) @VAArgStructFn
 ; CHECK: ret void
+
 
 declare i32 @InnerTailCall(i32 %a)
 
@@ -878,5 +880,41 @@ define void @MismatchedReturnTypeTailCall(i32 %a) sanitize_memory {
 ; CHECK: tail call i32 @InnerTailCall
 ; CHECK: ret void
 
-; CHECK-LABEL: define internal void @msan.module_ctor
+
+declare i32 @MustTailCall(i32 %a)
+
+define i32 @CallMustTailCall(i32 %a) sanitize_memory {
+  %b = musttail call i32 @MustTailCall(i32 %a)
+  ret i32 %b
+}
+
+; For "musttail" calls we can not insert any shadow manipulating code between
+; call and the return instruction. And we don't need to, because everything is
+; taken care of in the callee.
+
+; CHECK-LABEL: define i32 @CallMustTailCall
+; CHECK: musttail call i32 @MustTailCall
+; No instrumentation between call and ret.
+; CHECK-NEXT: ret i32
+
+declare i32* @MismatchingMustTailCall(i32 %a)
+
+define i8* @MismatchingCallMustTailCall(i32 %a) sanitize_memory {
+  %b = musttail call i32* @MismatchingMustTailCall(i32 %a)
+  %c = bitcast i32* %b to i8*
+  ret i8* %c
+}
+
+; For "musttail" calls we can not insert any shadow manipulating code between
+; call and the return instruction. And we don't need to, because everything is
+; taken care of in the callee.
+
+; CHECK-LABEL: define i8* @MismatchingCallMustTailCall
+; CHECK: musttail call i32* @MismatchingMustTailCall
+; No instrumentation between call and ret.
+; CHECK-NEXT: bitcast i32* {{.*}} to i8*
+; CHECK-NEXT: ret i8*
+
+
+; CHECK-LABEL: define internal void @msan.module_ctor() {
 ; CHECK: call void @__msan_init()

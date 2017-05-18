@@ -630,3 +630,252 @@ done:
   %y = phi i32 [ undef, %entry ]
   ret i32 %y
 }
+
+; We should be able to fold the zexts to the other side of the phi
+; even though there's a constant value input to the phi. This is
+; because we can shrink that constant to the smaller phi type.
+
+define i1 @PR24766(i8 %x1, i8 %x2, i8 %condition) {
+entry:
+  %conv = sext i8 %condition to i32
+  switch i32 %conv, label %epilog [
+    i32 0, label %sw1
+    i32 1, label %sw2
+  ]
+
+sw1:
+  %cmp1 = icmp eq i8 %x1, %x2
+  %frombool1 = zext i1 %cmp1 to i8
+  br label %epilog
+
+sw2:
+  %cmp2 = icmp sle i8 %x1, %x2
+  %frombool2 = zext i1 %cmp2 to i8
+  br label %epilog
+
+epilog:
+  %conditionMet = phi i8 [ 0, %entry ], [ %frombool2, %sw2 ], [ %frombool1, %sw1 ]
+  %tobool = icmp ne i8 %conditionMet, 0
+  ret i1 %tobool
+
+; CHECK-LABEL: @PR24766(
+; CHECK: %[[RES:.*]] = phi i1 [ false, %entry ], [ %cmp2, %sw2 ], [ %cmp1, %sw1 ]
+; CHECK-NEXT: ret i1 %[[RES]] 
+}
+
+; Same as above (a phi with more than 2 operands), but no constants
+ 
+define i1 @PR24766_no_constants(i8 %x1, i8 %x2, i8 %condition, i1 %another_condition) {
+entry:
+  %frombool0 = zext i1 %another_condition to i8
+  %conv = sext i8 %condition to i32
+  switch i32 %conv, label %epilog [
+    i32 0, label %sw1
+    i32 1, label %sw2
+  ]
+
+sw1:
+  %cmp1 = icmp eq i8 %x1, %x2
+  %frombool1 = zext i1 %cmp1 to i8
+  br label %epilog
+
+sw2:
+  %cmp2 = icmp sle i8 %x1, %x2
+  %frombool2 = zext i1 %cmp2 to i8
+  br label %epilog
+
+epilog:
+  %conditionMet = phi i8 [ %frombool0, %entry ], [ %frombool2, %sw2 ], [ %frombool1, %sw1 ]
+  %tobool = icmp ne i8 %conditionMet, 0
+  ret i1 %tobool
+
+; CHECK-LABEL: @PR24766_no_constants(
+; CHECK: %[[RES:.*]] = phi i1 [ %another_condition, %entry ], [ %cmp2, %sw2 ], [ %cmp1, %sw1 ]
+; CHECK-NEXT: ret i1 %[[RES]]
+}
+
+; Same as above (a phi with more than 2 operands), but two constants
+
+define i1 @PR24766_two_constants(i8 %x1, i8 %x2, i8 %condition) {
+entry:
+  %conv = sext i8 %condition to i32
+  switch i32 %conv, label %epilog [
+    i32 0, label %sw1
+    i32 1, label %sw2
+  ]
+
+sw1:
+  %cmp1 = icmp eq i8 %x1, %x2
+  %frombool1 = zext i1 %cmp1 to i8
+  br label %epilog
+
+sw2:
+  %cmp2 = icmp sle i8 %x1, %x2
+  %frombool2 = zext i1 %cmp2 to i8
+  br label %epilog
+
+epilog:
+  %conditionMet = phi i8 [ 0, %entry ], [ 1, %sw2 ], [ %frombool1, %sw1 ]
+  %tobool = icmp ne i8 %conditionMet, 0
+  ret i1 %tobool
+
+; CHECK-LABEL: @PR24766_two_constants(
+; CHECK: %[[RES:.*]] = phi i1 [ false, %entry ], [ true, %sw2 ], [ %cmp1, %sw1 ]
+; CHECK-NEXT: ret i1 %[[RES]]
+}
+
+; Same as above (a phi with more than 2 operands), but two constants and two variables
+
+define i1 @PR24766_two_constants_two_var(i8 %x1, i8 %x2, i8 %condition) {
+entry:
+  %conv = sext i8 %condition to i32
+  switch i32 %conv, label %epilog [
+    i32 0, label %sw1
+    i32 1, label %sw2
+    i32 2, label %sw3
+  ]
+
+sw1:
+  %cmp1 = icmp eq i8 %x1, %x2
+  %frombool1 = zext i1 %cmp1 to i8
+  br label %epilog
+
+sw2:
+  %cmp2 = icmp sle i8 %x1, %x2
+  %frombool2 = zext i1 %cmp2 to i8
+  br label %epilog
+
+sw3:
+  %cmp3 = icmp sge i8 %x1, %x2
+  %frombool3 = zext i1 %cmp3 to i8
+  br label %epilog
+
+epilog:
+  %conditionMet = phi i8 [ 0, %entry ], [ %frombool2, %sw2 ], [ %frombool1, %sw1 ], [ 1, %sw3 ]
+  %tobool = icmp ne i8 %conditionMet, 0
+  ret i1 %tobool
+
+; CHECK-LABEL: @PR24766_two_constants_two_var(
+; CHECK: %[[RES:.*]] = phi i1 [ false, %entry ], [ %cmp2, %sw2 ], [ %cmp1, %sw1 ], [ true, %sw3 ]
+; CHECK-NEXT: ret i1 %[[RES]]
+}
+
+; CHECK-LABEL: phi_allnonzeroconstant
+; CHECK-NOT: phi i32
+; CHECK: ret i1 false
+define i1 @phi_allnonzeroconstant(i1 %c, i32 %a, i32 %b) {
+entry:
+  br i1 %c, label %if.then, label %if.else
+
+if.then:                                          ; preds = %entry
+  br label %if.end
+
+if.else:                                          ; preds = %entry
+  call void @dummy()
+
+  br label %if.end
+
+if.end:                                           ; preds = %if.else, %if.then
+  %x.0 = phi i32 [ 1, %if.then ], [ 2, %if.else ]
+  %or = or i32 %x.0, %a
+  %cmp1 = icmp eq i32 %or, 0
+  ret i1 %cmp1
+}
+
+declare void @dummy()
+
+; CHECK-LABEL: @phi_knownnonzero_eq
+; CHECK-LABEL: if.then:
+; CHECK-NOT: select
+; CHECK-LABEL: if.end:
+; CHECK: phi i32 [ 1, %if.then ]
+define i1 @phi_knownnonzero_eq(i32 %n, i32 %s, i32* nocapture readonly %P) {
+entry:
+  %tobool = icmp slt  i32 %n, %s
+  br i1 %tobool, label %if.end, label %if.then
+
+if.then:                                          ; preds = %entry
+  %0 = load i32, i32* %P
+  %cmp = icmp eq i32 %n, %0
+  %1 = select i1 %cmp, i32 1, i32 2
+  br label %if.end
+
+if.end:                                           ; preds = %entry, %if.then
+  %a.0 = phi i32 [ %1,  %if.then ], [ %n, %entry ]
+  %cmp1 = icmp eq i32 %a.0, 0
+  ret i1  %cmp1
+}
+
+; CHECK-LABEL: @phi_knownnonzero_ne
+; CHECK-LABEL: if.then:
+; CHECK-NOT: select
+; CHECK-LABEL: if.end:
+; CHECK: phi i32 [ 1, %if.then ]
+define i1 @phi_knownnonzero_ne(i32 %n, i32 %s, i32* nocapture readonly %P) {
+entry:
+  %tobool = icmp slt  i32 %n, %s
+  br i1 %tobool, label %if.end, label %if.then
+
+if.then:                                          ; preds = %entry
+  %0 = load i32, i32* %P
+  %cmp = icmp eq i32 %n, %0
+  %1 = select i1 %cmp, i32 1, i32 2
+  br label %if.end
+
+if.end:                                           ; preds = %entry, %if.then
+  %a.0 = phi i32 [ %1,  %if.then ], [ %n, %entry ]
+  %cmp1 = icmp ne i32 %a.0, 0
+  ret i1  %cmp1
+}
+
+; CHECK-LABEL: @phi_knownnonzero_eq_2
+; CHECK-LABEL: if.then:
+; CHECK-NOT: select
+; CHECK-LABEL: if.end:
+; CHECK: phi i32 [ 2, %if.else ]
+define i1 @phi_knownnonzero_eq_2(i32 %n, i32 %s, i32* nocapture readonly %P) {
+entry:
+  %tobool = icmp slt  i32 %n, %s
+  br i1 %tobool, label %if.then, label %if.end
+
+if.then:
+  %tobool2 = icmp slt  i32 %n, %s
+  br i1 %tobool2, label %if.else, label %if.end
+
+if.else:                                          ; preds = %entry
+  %0 = load i32, i32* %P
+  %cmp = icmp eq i32 %n, %0
+  %1 = select i1 %cmp, i32 1, i32 2
+  br label %if.end
+
+if.end:                                           ; preds = %entry, %if.then
+  %a.0 = phi i32 [ %1,  %if.else], [ %n, %entry ], [2, %if.then]
+  %cmp1 = icmp eq i32 %a.0, 0
+  ret i1  %cmp1
+}
+
+; CHECK-LABEL: @phi_knownnonzero_ne_2
+; CHECK-LABEL: if.then:
+; CHECK-NOT: select
+; CHECK-LABEL: if.end:
+; CHECK: phi i32 [ 2, %if.else ]
+define i1 @phi_knownnonzero_ne_2(i32 %n, i32 %s, i32* nocapture readonly %P) {
+entry:
+  %tobool = icmp slt  i32 %n, %s
+  br i1 %tobool, label %if.then, label %if.end
+
+if.then:
+  %tobool2 = icmp slt  i32 %n, %s
+  br i1 %tobool2, label %if.else, label %if.end
+
+if.else:                                          ; preds = %entry
+  %0 = load i32, i32* %P
+  %cmp = icmp eq i32 %n, %0
+  %1 = select i1 %cmp, i32 1, i32 2
+  br label %if.end
+
+if.end:                                           ; preds = %entry, %if.then
+  %a.0 = phi i32 [ %1,  %if.else], [ %n, %entry ], [2, %if.then]
+  %cmp1 = icmp ne i32 %a.0, 0
+  ret i1  %cmp1
+}

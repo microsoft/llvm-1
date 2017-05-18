@@ -476,6 +476,40 @@ exit1:
 ; CHECK: }
 }
 
+;;; Verify that we can handle constraint propagation through cast.
+define i32 @test16(i1 %cond) {
+Entry:
+; CHECK-LABEL: @test16(
+	br i1 %cond, label %Merge, label %F1
+
+; CHECK: Entry:
+; CHECK-NEXT:  br i1 %cond, label %F2, label %Merge
+
+F1:
+	%v1 = call i32 @f1()
+	br label %Merge
+
+Merge:
+	%B = phi i32 [0, %Entry], [%v1, %F1]
+	%M = icmp eq i32 %B, 0 
+	%M1 = zext i1 %M to i32
+	%N = icmp eq i32 %M1, 0 
+	br i1 %N, label %T2, label %F2
+
+; CHECK: Merge:
+; CHECK-NOT: phi
+; CHECK-NEXT:   %v1 = call i32 @f1()
+
+T2:
+	%Q = call i32 @f2() 
+	ret i32 %Q
+
+F2:
+	ret i32 %B
+; CHECK: F2:
+; CHECK-NEXT: phi i32
+}
+
 ; In this test we check that block duplication is inhibited by the presence
 ; of a function with the 'noduplicate' attribute.
 
@@ -483,7 +517,7 @@ declare void @g()
 declare void @j()
 declare void @k()
 
-; CHECK: define void @h(i32 %p) {
+; CHECK-LABEL: define void @h(i32 %p) {
 define void @h(i32 %p) {
   %x = icmp ult i32 %p, 5
   br i1 %x, label %l1, label %l2
@@ -513,4 +547,36 @@ l5:
 ; CHECK: }
 }
 
+; CHECK-LABEL: define void @h_con(i32 %p) {
+define void @h_con(i32 %p) {
+  %x = icmp ult i32 %p, 5
+  br i1 %x, label %l1, label %l2
+
+l1:
+  call void @j()
+  br label %l3
+
+l2:
+  call void @k()
+  br label %l3
+
+l3:
+; CHECK: call void @g() [[CON:#[0-9]+]]
+; CHECK-NOT: call void @g() [[CON]]
+  call void @g() convergent
+  %y = icmp ult i32 %p, 5
+  br i1 %y, label %l4, label %l5
+
+l4:
+  call void @j()
+  ret void
+
+l5:
+  call void @k()
+  ret void
+; CHECK: }
+}
+
+
 ; CHECK: attributes [[NOD]] = { noduplicate }
+; CHECK: attributes [[CON]] = { convergent }

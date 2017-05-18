@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=arm64 -aarch64-neon-syntax=apple | FileCheck %s
+; RUN: llc < %s -mtriple=arm64-eabi -aarch64-neon-syntax=apple | FileCheck %s
 
 
 define <8 x i16> @sabdl8h(<8 x i8>* %A, <8 x i8>* %B) nounwind {
@@ -132,6 +132,60 @@ define <2 x i64> @uabdl2_2d(<4 x i32>* %A, <4 x i32>* %B) nounwind {
   %tmp3 = call <2 x i32> @llvm.aarch64.neon.uabd.v2i32(<2 x i32> %tmp1, <2 x i32> %tmp2)
   %tmp4 = zext <2 x i32> %tmp3 to <2 x i64>
   ret <2 x i64> %tmp4
+}
+
+declare i16 @llvm.experimental.vector.reduce.add.i16.v16i16(<16 x i16>)
+
+define i16 @uabdl8h_rdx(<16 x i8>* %a, <16 x i8>* %b) {
+; CHECK-LABEL: uabdl8h_rdx
+; CHECK: uabdl2.8h
+; CHECK: uabdl.8h
+  %aload = load <16 x i8>, <16 x i8>* %a, align 1
+  %bload = load <16 x i8>, <16 x i8>* %b, align 1
+  %aext = zext <16 x i8> %aload to <16 x i16>
+  %bext = zext <16 x i8> %bload to <16 x i16>
+  %abdiff = sub nsw <16 x i16> %aext, %bext
+  %abcmp = icmp slt <16 x i16> %abdiff, zeroinitializer
+  %ababs = sub nsw <16 x i16> zeroinitializer, %abdiff
+  %absel = select <16 x i1> %abcmp, <16 x i16> %ababs, <16 x i16> %abdiff
+  %reduced_v = call i16 @llvm.experimental.vector.reduce.add.i16.v16i16(<16 x i16> %absel)
+  ret i16 %reduced_v
+}
+
+declare i32 @llvm.experimental.vector.reduce.add.i32.v8i32(<8 x i32>)
+
+define i32 @uabdl4s_rdx(<8 x i16>* %a, <8 x i16>* %b) {
+; CHECK-LABEL: uabdl4s_rdx
+; CHECK: uabdl2.4s
+; CHECK: uabdl.4s
+  %aload = load <8 x i16>, <8 x i16>* %a, align 1
+  %bload = load <8 x i16>, <8 x i16>* %b, align 1
+  %aext = zext <8 x i16> %aload to <8 x i32>
+  %bext = zext <8 x i16> %bload to <8 x i32>
+  %abdiff = sub nsw <8 x i32> %aext, %bext
+  %abcmp = icmp slt <8 x i32> %abdiff, zeroinitializer
+  %ababs = sub nsw <8 x i32> zeroinitializer, %abdiff
+  %absel = select <8 x i1> %abcmp, <8 x i32> %ababs, <8 x i32> %abdiff
+  %reduced_v = call i32 @llvm.experimental.vector.reduce.add.i32.v8i32(<8 x i32> %absel)
+  ret i32 %reduced_v
+}
+
+declare i64 @llvm.experimental.vector.reduce.add.i64.v4i64(<4 x i64>)
+
+define i64 @uabdl2d_rdx(<4 x i32>* %a, <4 x i32>* %b, i32 %h) {
+; CHECK: uabdl2d_rdx
+; CHECK: uabdl2.2d
+; CHECK: uabdl.2d
+  %aload = load <4 x i32>, <4 x i32>* %a, align 1
+  %bload = load <4 x i32>, <4 x i32>* %b, align 1
+  %aext = zext <4 x i32> %aload to <4 x i64>
+  %bext = zext <4 x i32> %bload to <4 x i64>
+  %abdiff = sub nsw <4 x i64> %aext, %bext
+  %abcmp = icmp slt <4 x i64> %abdiff, zeroinitializer
+  %ababs = sub nsw <4 x i64> zeroinitializer, %abdiff
+  %absel = select <4 x i1> %abcmp, <4 x i64> %ababs, <4 x i64> %abdiff
+  %reduced_v = call i64 @llvm.experimental.vector.reduce.add.i64.v4i64(<4 x i64> %absel)
+  ret i64 %reduced_v
 }
 
 define <2 x float> @fabd_2s(<2 x float>* %A, <2 x float>* %B) nounwind {

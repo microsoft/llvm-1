@@ -18,7 +18,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/CodeGenCWrappers.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
@@ -32,25 +32,14 @@
 
 using namespace llvm;
 
-
-// The TargetMachine uses to offer access to a DataLayout member. This is reflected
-// in the C API. For backward compatibility reason, this structure allows to keep
-// a DataLayout member accessible to C client that have a handle to a
-// LLVMTargetMachineRef.
-struct LLVMOpaqueTargetMachine {
-  std::unique_ptr<TargetMachine> Machine;
-  DataLayout DL;
-};
-
-
 static TargetMachine *unwrap(LLVMTargetMachineRef P) {
-  return P->Machine.get();
+  return reinterpret_cast<TargetMachine *>(P);
 }
 static Target *unwrap(LLVMTargetRef P) {
   return reinterpret_cast<Target*>(P);
 }
 static LLVMTargetMachineRef wrap(const TargetMachine *P) {
-  return new LLVMOpaqueTargetMachine{ std::unique_ptr<TargetMachine>(const_cast<TargetMachine*>(P)),  P->createDataLayout() };
+  return reinterpret_cast<LLVMTargetMachineRef>(const_cast<TargetMachine *>(P));
 }
 static LLVMTargetRef wrap(const Target * P) {
   return reinterpret_cast<LLVMTargetRef>(const_cast<Target*>(P));
@@ -70,25 +59,24 @@ LLVMTargetRef LLVMGetNextTarget(LLVMTargetRef T) {
 
 LLVMTargetRef LLVMGetTargetFromName(const char *Name) {
   StringRef NameRef = Name;
-  auto I = std::find_if(
-      TargetRegistry::targets().begin(), TargetRegistry::targets().end(),
-      [&](const Target &T) { return T.getName() == NameRef; });
+  auto I = find_if(TargetRegistry::targets(),
+                   [&](const Target &T) { return T.getName() == NameRef; });
   return I != TargetRegistry::targets().end() ? wrap(&*I) : nullptr;
 }
 
 LLVMBool LLVMGetTargetFromTriple(const char* TripleStr, LLVMTargetRef *T,
                                  char **ErrorMessage) {
   std::string Error;
-  
+
   *T = wrap(TargetRegistry::lookupTarget(TripleStr, Error));
-  
+
   if (!*T) {
     if (ErrorMessage)
       *ErrorMessage = strdup(Error.c_str());
 
     return 1;
   }
-  
+
   return 0;
 }
 
@@ -113,10 +101,10 @@ LLVMBool LLVMTargetHasAsmBackend(LLVMTargetRef T) {
 }
 
 LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
-        const char* Triple, const char* CPU, const char* Features,
+        const char *Triple, const char *CPU, const char *Features,
         LLVMCodeGenOptLevel Level, LLVMRelocMode Reloc,
         LLVMCodeModel CodeModel) {
-  Reloc::Model RM;
+  Optional<Reloc::Model> RM;
   switch (Reloc){
     case LLVMRelocStatic:
       RM = Reloc::Static;
@@ -128,7 +116,6 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
       RM = Reloc::DynamicNoPIC;
       break;
     default:
-      RM = Reloc::Default;
       break;
   }
 
@@ -152,13 +139,10 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
 
   TargetOptions opt;
   return wrap(unwrap(T)->createTargetMachine(Triple, CPU, Features, opt, RM,
-    CM, OL));
+                                             CM, OL));
 }
 
-
-void LLVMDisposeTargetMachine(LLVMTargetMachineRef T) {
-  delete T;
-}
+void LLVMDisposeTargetMachine(LLVMTargetMachineRef T) { delete unwrap(T); }
 
 LLVMTargetRef LLVMGetTargetMachineTarget(LLVMTargetMachineRef T) {
   const Target* target = &(unwrap(T)->getTarget());
@@ -180,14 +164,13 @@ char* LLVMGetTargetMachineFeatureString(LLVMTargetMachineRef T) {
   return strdup(StringRep.c_str());
 }
 
-/// @deprecated: see "struct LLVMOpaqueTargetMachine" description above
-LLVMTargetDataRef LLVMGetTargetMachineData(LLVMTargetMachineRef T) {
-  return wrap(&T->DL);
-}
-
 void LLVMSetTargetMachineAsmVerbosity(LLVMTargetMachineRef T,
                                       LLVMBool VerboseAsm) {
   unwrap(T)->Options.MCOptions.AsmVerbose = VerboseAsm;
+}
+
+LLVMTargetDataRef LLVMCreateTargetDataLayout(LLVMTargetMachineRef T) {
+  return wrap(new DataLayout(unwrap(T)->createDataLayout()));
 }
 
 static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
@@ -243,7 +226,6 @@ LLVMBool LLVMTargetMachineEmitToMemoryBuffer(LLVMTargetMachineRef T,
   SmallString<0> CodeString;
   raw_svector_ostream OStream(CodeString);
   bool Result = LLVMTargetMachineEmit(T, M, OStream, codegen, ErrorMessage);
-  OStream.flush();
 
   StringRef Data = OStream.str();
   *OutMemBuf =

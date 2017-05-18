@@ -1,5 +1,5 @@
 ; RUN: llc -mtriple i686-pc-cygwin < %s -filetype=obj | llvm-dwarfdump - | FileCheck %s
-; RUN: llc -mtriple i686-pc-cygwin -split-dwarf=Enable < %s -filetype=obj | llvm-dwarfdump - | FileCheck --check-prefix=FISSION %s
+; RUN: llc -mtriple i686-pc-cygwin -split-dwarf-file=foo.dwo < %s -filetype=obj | llvm-dwarfdump - | FileCheck --check-prefix=FISSION %s
 
 ; Expect no line table entry since there are no functions and file references in this compile unit
 ; CHECK: .debug_line contents:
@@ -19,7 +19,7 @@
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!5}
 
-!0 = !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.1 (trunk 143523)", isOptimized: true, emissionKind: 0, file: !4, enums: !2, retainedTypes: !2, subprograms: !2, globals: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.1 (trunk 143523)", isOptimized: true, emissionKind: FullDebug, file: !4, enums: !2, retainedTypes: !2, globals: !2)
 !2 = !{}
 !3 = !DIFile(filename: "empty.c", directory: "/home/nlewycky")
 !4 = !DIFile(filename: "empty.c", directory: "/home/nlewycky")

@@ -1,4 +1,5 @@
-; RUN: llc < %s
+; RUN: llc -verify-machineinstrs < %s
+; REQUIRES: default_triple
 
 	%struct..0anon = type { i32 }
 	%struct.rtx_def = type { i16, i8, i8, [1 x %struct..0anon] }

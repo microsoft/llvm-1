@@ -1,4 +1,5 @@
 ; RUN: opt < %s -analyze -scalar-evolution -scalar-evolution-max-iterations=0 | FileCheck %s
+; RUN: opt < %s -passes='print<scalar-evolution>' -disable-output 2>&1 | FileCheck %s
 ; PR1101
 
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
@@ -6,7 +7,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 @A = weak global [1000 x i32] zeroinitializer, align 32         
 
-; CHECK: Printing analysis 'Scalar Evolution Analysis' for function 'test1':
+; CHECK-LABEL: Determining loop execution counts for: @test1
 ; CHECK: backedge-taken count is 10000
 
 define void @test1(i32 %N) {
@@ -32,7 +33,7 @@ return:         ; preds = %bb5
 }
 
 ; PR22795
-; CHECK: Printing analysis 'Scalar Evolution Analysis' for function 'test2':
+; CHECK-LABEL: Classifying expressions for: @test2
 ; CHECK:   %iv = phi i32 [ -1, %entry ], [ %next.1, %for.inc.1 ]
 ; CHECK-NEXT:  -->  {-1,+,2}<%preheader> U: full-set S: full-set             Exits: 13
 
@@ -88,3 +89,25 @@ for.inc.1:                                        ; preds = %for.body.1, %for.in
 
 ; Function Attrs: nounwind
 declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i32, i1) #0
+
+declare void @may_exit() nounwind
+
+define void @pr28012(i32 %n) {
+; CHECK-LABEL: Classifying expressions for: @pr28012
+; CHECK: Loop %loop: backedge-taken count is -1431655751
+; CHECK: Loop %loop: max backedge-taken count is -1431655751
+; CHECK: Loop %loop: Predicated backedge-taken count is -1431655751
+
+entry:
+  br label %loop
+
+loop:
+  %iv = phi i32 [ 0, %entry ], [ %iv.inc, %loop ]
+  %iv.inc = add nsw i32 %iv, 3
+  call void @may_exit()
+  %becond = icmp ne i32 %iv.inc, 46
+  br i1 %becond, label %loop, label %leave
+
+leave:
+  ret void
+}

@@ -1,11 +1,12 @@
 ; RUN: opt < %s -analyze -branch-prob | FileCheck %s
+; RUN: opt < %s -passes='print<branch-prob>' -disable-output 2>&1 | FileCheck %s
 
 ; In this test, the else clause is taken about 90% of the time. This was not
 ; reflected in the probability computation because the weight is larger than
 ; the branch weight cap (about 2 billion).
 ;
-; CHECK: edge for.body -> if.then probability is 216661881 / 2166666667 = 9.9
-; CHECK: edge for.body -> if.else probability is 1950004786 / 2166666667 = 90.0
+; CHECK: edge for.body -> if.then probability is 0x0cccba45 / 0x80000000 = 10.00%
+; CHECK: edge for.body -> if.else probability is 0x733345bb / 0x80000000 = 90.00% [HOT edge]
 
 @y = common global i64 0, align 8
 @x = common global i64 0, align 8

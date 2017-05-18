@@ -31,8 +31,7 @@ well together.
 
 This document contains information necessary to successfully implement this
 interface, use it, and to test both sides.  It also explains some of the finer
-points about what exactly results mean.  If you feel that something is unclear
-or should be added, please `let me know <mailto:sabre@nondot.org>`_.
+points about what exactly results mean.  
 
 ``AliasAnalysis`` Class Overview
 ================================
@@ -137,7 +136,7 @@ be overlapping in some way, but do not start at the same address.
 
 The ``MustAlias`` response may only be returned if the two memory objects are
 guaranteed to always start at exactly the same location. A ``MustAlias``
-response implies that the pointers compare equal.
+response does not imply that the pointers compare equal.
 
 The ``getModRefInfo`` methods
 -----------------------------
@@ -190,7 +189,7 @@ this property are side-effect free, only depending on their input arguments and
 the state of memory when they are called.  This property allows calls to these
 functions to be eliminated and moved around, as long as there is no store
 instruction that changes the contents of memory.  Note that all functions that
-satisfy the ``doesNotAccessMemory`` method also satisfies ``onlyReadsMemory``.
+satisfy the ``doesNotAccessMemory`` method also satisfy ``onlyReadsMemory``.
 
 Writing a new ``AliasAnalysis`` Implementation
 ==============================================
@@ -389,11 +388,10 @@ in its ``getAnalysisUsage`` that it does so. Some passes attempt to use
 ``AU.addPreserved<AliasAnalysis>``, however this doesn't actually have any
 effect.
 
-``AliasAnalysisCounter`` (``-count-aa``) and ``AliasDebugger`` (``-debug-aa``)
-are implemented as ``ModulePass`` classes, so if your alias analysis uses
-``FunctionPass``, it won't be able to use these utilities. If you try to use
-them, the pass manager will silently route alias analysis queries directly to
-``BasicAliasAnalysis`` instead.
+``AliasAnalysisCounter`` (``-count-aa``) are implemented as ``ModulePass``
+classes, so if your alias analysis uses ``FunctionPass``, it won't be able to
+use these utilities. If you try to use them, the pass manager will silently
+route alias analysis queries directly to ``BasicAliasAnalysis`` instead.
 
 Similarly, the ``opt -p`` option introduces ``ModulePass`` passes between each
 pass, which prevents the use of ``FunctionPass`` alias analysis passes.
@@ -635,7 +633,7 @@ transformations:
 * It uses mod/ref information to hoist function calls out of loops that do not
   write to memory and are loop-invariant.
 
-* If uses alias information to promote memory objects that are loaded and stored
+* It uses alias information to promote memory objects that are loaded and stored
   to in loops to live in a register instead.  It can do this if there are no may
   aliases to the loaded/stored memory location.
 
@@ -703,6 +701,12 @@ algorithm will have a lower number of may aliases).
 
 Memory Dependence Analysis
 ==========================
+
+.. note::
+
+  We are currently in the process of migrating things from
+  ``MemoryDependenceAnalysis`` to :doc:`MemorySSA`. Please try to use
+  that instead.
 
 If you're just looking to be a client of alias analysis information, consider
 using the Memory Dependence Analysis interface instead.  MemDep is a lazy,

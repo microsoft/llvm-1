@@ -1,4 +1,4 @@
-//===- MCJITTestBase.h - Common base class for MCJIT Unit tests  ----------===//
+//===- MCJITTestBase.h - Common base class for MCJIT Unit tests -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,7 +12,6 @@
 // systems.
 //
 //===----------------------------------------------------------------------===//
-
 
 #ifndef LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H
 #define LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H
@@ -70,9 +69,8 @@ protected:
 
     SmallVector<Value*, 1> CallArgs;
 
-    Function::arg_iterator arg_iter = Result->arg_begin();
-    for(;arg_iter != Result->arg_end(); ++arg_iter)
-      CallArgs.push_back(arg_iter);
+    for (Argument &A : Result->args())
+      CallArgs.push_back(&A);
 
     Value *ReturnCode = Builder.CreateCall(Callee, CallArgs);
     Builder.CreateRet(ReturnCode);
@@ -98,8 +96,8 @@ protected:
     Function *Result = startFunction<int32_t(int32_t, int32_t)>(M, Name);
 
     Function::arg_iterator args = Result->arg_begin();
-    Value *Arg1 = args;
-    Value *Arg2 = ++args;
+    Value *Arg1 = &*args;
+    Value *Arg2 = &*++args;
     Value *AddResult = Builder.CreateAdd(Arg1, Arg2);
 
     endFunctionWithRet(Result, AddResult);
@@ -160,17 +158,17 @@ protected:
   //   }
   // NOTE: if Helper is left as the default parameter, Helper == recursive_add.
   Function *insertAccumulateFunction(Module *M,
-                                              Function *Helper = 0,
-                                              StringRef Name = "accumulate") {
+                                     Function *Helper = nullptr,
+                                     StringRef Name = "accumulate") {
     Function *Result = startFunction<int32_t(int32_t)>(M, Name);
-    if (Helper == 0)
+    if (!Helper)
       Helper = Result;
 
     BasicBlock *BaseCase = BasicBlock::Create(Context, "", Result);
     BasicBlock *RecursiveCase = BasicBlock::Create(Context, "", Result);
 
     // if (num == 0)
-    Value *Param = Result->arg_begin();
+    Value *Param = &*Result->arg_begin();
     Value *Zero = ConstantInt::get(Context, APInt(32, 0));
     Builder.CreateCondBr(Builder.CreateICmpEQ(Param, Zero),
                          BaseCase, RecursiveCase);
@@ -199,7 +197,7 @@ protected:
                                       Function *&FB1, Function *&FB2) {
     // Define FB1 in B.
     B.reset(createEmptyModule("B"));
-    FB1 = insertAccumulateFunction(B.get(), 0, "FB1");
+    FB1 = insertAccumulateFunction(B.get(), nullptr, "FB1");
 
     // Declare FB1 in A (as an external).
     A.reset(createEmptyModule("A"));
@@ -233,7 +231,6 @@ protected:
     Function *FBExtern_in_C = insertExternalReferenceToFunction(C.get(), FB);
     FC = insertSimpleCallFunction<int32_t(int32_t, int32_t)>(C.get(), FBExtern_in_C);
   }
-
 
   // Module A { Function FA },
   // Populates Modules A and B:
@@ -279,14 +276,12 @@ protected:
   }
 };
 
-
 class MCJITTestBase : public MCJITTestAPICommon, public TrivialModuleBuilder {
 protected:
 
   MCJITTestBase()
     : TrivialModuleBuilder(HostTriple)
     , OptLevel(CodeGenOpt::None)
-    , RelocModel(Reloc::Default)
     , CodeModel(CodeModel::Default)
     , MArch("")
     , MM(new SectionMemoryManager)
@@ -326,7 +321,6 @@ protected:
                  .setErrorStr(&Error)
                  .setOptLevel(CodeGenOpt::None)
                  .setCodeModel(CodeModel::JITDefault)
-                 .setRelocationModel(Reloc::Default)
                  .setMArch(MArch)
                  .setMCPU(sys::getHostCPUName())
                  //.setMAttrs(MAttrs)
@@ -336,7 +330,6 @@ protected:
   }
 
   CodeGenOpt::Level OptLevel;
-  Reloc::Model RelocModel;
   CodeModel::Model CodeModel;
   StringRef MArch;
   SmallVector<std::string, 1> MAttrs;
@@ -348,4 +341,4 @@ protected:
 
 } // namespace llvm
 
-#endif
+#endif // LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H

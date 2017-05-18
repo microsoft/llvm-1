@@ -12,7 +12,7 @@ target triple = "x86_64-pc-linux-gnu"
 @func_5_xxx.static_local_3_xxx = internal global i32 3, align 4
 @global_3_xxx = common global i32 0, align 4
 
-@func_7_xxx = weak alias i32 (...)* @aliased_func_7_xxx
+@func_7_xxx = weak alias i32 (...), i32 (...)* @aliased_func_7_xxx
 
 define i32 @aliased_func_7_xxx(...) {
   ret i32 0
@@ -95,4 +95,19 @@ define i32 @varargs_func_6_xxx(i32 %arg_1_xxx, i32 %arg_2_xxx, ...) nounwind uwt
   store i32 %arg_1_xxx, i32* %1, align 4
   store i32 %arg_2_xxx, i32* %2, align 4
   ret i32 6
+}
+
+declare noalias i8* @malloc(i32)
+declare void @free(i8* nocapture)
+
+define void @dont_rename_lib_funcs() {
+; CHECK-LABEL: @foo(
+; CHECK-NEXT:  bb:
+; CHECK-NEXT:    [[TMP:%.*]] = call i8* @malloc(i32 23)
+; CHECK-NEXT:    call void @free(i8* [[TMP]])
+; CHECK-NEXT:    ret void
+;
+  %x = call i8* @malloc(i32 23)
+  call void @free(i8* %x)
+  ret void
 }

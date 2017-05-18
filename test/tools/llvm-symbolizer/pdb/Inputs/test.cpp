@@ -10,9 +10,20 @@ struct Foo {
 void foo() {
 }
 
+static void private_symbol() {
+}
+
 int main() {
   foo();
   
   NS::Foo f;
   f.bar();
+  private_symbol();
+}
+
+extern "C" {
+void __cdecl foo_cdecl() {}
+void __stdcall foo_stdcall() {}
+void __fastcall foo_fastcall() {}
+void __vectorcall foo_vectorcall() {}
 }

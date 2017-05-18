@@ -1,4 +1,4 @@
-# RUN: not llc -march=x86-64 -start-after branch-folder -stop-after branch-folder -o /dev/null %s 2>&1 | FileCheck %s
+# RUN: not llc -march=x86-64 -run-pass none -o /dev/null %s 2>&1 | FileCheck %s
 # This test ensures that an error is reported when an unknown instruction is
 # encountered.
 
@@ -12,10 +12,8 @@
 ...
 ---
 name:            foo
-body:
- - id:           0
-   name:         entry
-   instructions:
-     # CHECK: [[@LINE+1]]:8: unknown machine instruction name 'retJust0'
-     - retJust0
+body: |
+  bb.0.entry:
+    ; CHECK: [[@LINE+1]]:5: unknown machine instruction name 'retJust0'
+    retJust0
 ...

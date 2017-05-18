@@ -37,7 +37,7 @@
 //CHECK-V8:   vqrdmlsh.f32  q3, q4, q5
 //CHECK-V8:           ^
 //CHECK-V8: error: invalid operand for instruction
-//CHECK-V8   vqrdmlsh.f64  d3, d5, d5
+//CHECK-V8:  vqrdmlsh.f64  d3, d5, d5
 //CHECK-V8:           ^
 
   vqrdmlah.s16    d0, d1, d2
@@ -192,10 +192,10 @@
 //CHECK-ERROR: error: too few operands for instruction
 //CHECK-ERROR:  setpan
 //CHECK-ERROR:  ^
-//CHECK-ERROR: error: invalid operand for instruction
+//CHECK-ERROR: error: immediate operand must be in the range [0,1]
 //CHECK-ERROR:  setpan #-1
 //CHECK-ERROR:         ^
-//CHECK-ERROR: error: invalid operand for instruction
+//CHECK-ERROR: error: immediate operand must be in the range [0,1]
 //CHECK-ERROR:  setpan #2
 //CHECK-ERROR:         ^
 

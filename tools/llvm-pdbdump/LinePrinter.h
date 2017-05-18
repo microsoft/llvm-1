@@ -18,21 +18,26 @@
 #include <list>
 
 namespace llvm {
+namespace pdb {
+
+class ClassLayout;
 
 class LinePrinter {
   friend class WithColor;
 
 public:
-  LinePrinter(int Indent, raw_ostream &Stream);
+  LinePrinter(int Indent, bool UseColor, raw_ostream &Stream);
 
   void Indent();
   void Unindent();
   void NewLine();
 
+  bool hasColor() const { return UseColor; }
   raw_ostream &getStream() { return OS; }
   int getIndentLevel() const { return CurrentIndent; }
 
-  bool IsTypeExcluded(llvm::StringRef TypeName);
+  bool IsClassExcluded(const ClassLayout &Class);
+  bool IsTypeExcluded(llvm::StringRef TypeName, uint32_t Size);
   bool IsSymbolExcluded(llvm::StringRef SymbolName);
   bool IsCompilandExcluded(llvm::StringRef CompilandName);
 
@@ -47,10 +52,15 @@ private:
   raw_ostream &OS;
   int IndentSpaces;
   int CurrentIndent;
+  bool UseColor;
 
-  std::list<Regex> CompilandFilters;
-  std::list<Regex> TypeFilters;
-  std::list<Regex> SymbolFilters;
+  std::list<Regex> ExcludeCompilandFilters;
+  std::list<Regex> ExcludeTypeFilters;
+  std::list<Regex> ExcludeSymbolFilters;
+
+  std::list<Regex> IncludeCompilandFilters;
+  std::list<Regex> IncludeTypeFilters;
+  std::list<Regex> IncludeSymbolFilters;
 };
 
 template <class T>
@@ -63,6 +73,8 @@ enum class PDB_ColorItem {
   None,
   Address,
   Type,
+  Comment,
+  Padding,
   Keyword,
   Offset,
   Identifier,
@@ -80,10 +92,11 @@ public:
   raw_ostream &get() { return OS; }
 
 private:
-  void translateColor(PDB_ColorItem C, raw_ostream::Colors &Color,
-                      bool &Bold) const;
+  void applyColor(PDB_ColorItem C);
   raw_ostream &OS;
+  bool UseColor;
 };
+}
 }
 
 #endif

@@ -19,12 +19,12 @@ class Intrinsic<string name, list<LLVMType> param_types = []> {
   string TargetPrefix = "";
   list<LLVMType> RetTypes = [];
   list<LLVMType> ParamTypes = param_types;
-  list<IntrinsicProperty> Properties = [];
+  list<IntrinsicProperty> IntrProperties = [];
 }
 
 // isVoid needs to match the definition in ValueTypes.td
-def isVoid : ValueType<0, 57>;   // Produces no value
+def isVoid : ValueType<0, 108>;   // Produces no value
 def llvm_vararg_ty : LLVMType<isVoid>;   // this means vararg here
 
-// CHECK: /* 0 */ 0, 28, 0,
+// CHECK: /* 0 */ 0, 29, 0,
 def int_foo : Intrinsic<"llvm.foo", [llvm_vararg_ty]>;

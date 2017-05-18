@@ -14,5 +14,9 @@ add_llvm_tool(llvm-dsymutil
   DebugMap.cpp
   DwarfLinker.cpp
   MachODebugMapParser.cpp
+  MachOUtils.cpp
+
+  DEPENDS
+  intrinsics_gen
   )
 

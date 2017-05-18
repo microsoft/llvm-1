@@ -16,7 +16,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CFG.h"
-#include "llvm/Analysis/LibCallSemantics.h"
+#include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -71,7 +71,7 @@ namespace {
 
     void getAnalysisUsage(AnalysisUsage &AU) const override;
 
-    const char *getPassName() const override {
+    StringRef getPassName() const override {
       return "Exception handling preparation";
     }
   };
@@ -192,9 +192,9 @@ bool DwarfEHPrepare::InsertUnwindResumeCalls(Function &Fn) {
   if (Resumes.empty())
     return false;
 
-  // Check the personality, don't do anything if it's for MSVC.
+  // Check the personality, don't do anything if it's funclet-based.
   EHPersonality Pers = classifyEHPersonality(Fn.getPersonalityFn());
-  if (isMSVCEHPersonality(Pers))
+  if (isFuncletEHPersonality(Pers))
     return false;
 
   LLVMContext &Ctx = Fn.getContext();

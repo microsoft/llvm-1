@@ -18,10 +18,10 @@
 #include "MipsFrameLowering.h"
 #include "MipsISelLowering.h"
 #include "MipsInstrInfo.h"
+#include "llvm/CodeGen/SelectionDAGTargetInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Target/TargetSelectionDAGInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include <string>
 
@@ -42,8 +42,14 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
     Mips3, Mips4, Mips5, Mips64, Mips64r2, Mips64r3, Mips64r5, Mips64r6
   };
 
+  enum class CPU { P5600 };
+
   // Mips architecture version
   MipsArchEnum MipsArchVersion;
+
+  // Processor implementation (unused but required to exist by
+  // tablegen-erated code).
+  CPU ProcImpl;
 
   // IsLittle - The target is Little Endian
   bool IsLittle;
@@ -74,6 +80,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
 
   // IsFP64bit - General-purpose registers are 64 bits wide
   bool IsGP64bit;
+
+  // IsPTR64bit - Pointers are 64 bit wide
+  bool IsPTR64bit;
 
   // HasVFPU - Processor has a vector floating point unit.
   bool HasVFPU;
@@ -116,8 +125,8 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // InMicroMips -- can process MicroMips instructions
   bool InMicroMipsMode;
 
-  // HasDSP, HasDSPR2 -- supports DSP ASE.
-  bool HasDSP, HasDSPR2;
+  // HasDSP, HasDSPR2, HasDSPR3 -- supports DSP ASE.
+  bool HasDSP, HasDSPR2, HasDSPR3;
 
   // Allow mixed Mips16 and Mips32 in one source file
   bool AllowMixed16_32;
@@ -130,6 +139,15 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // HasMSA -- supports MSA ASE.
   bool HasMSA;
 
+  // UseTCCInDIV -- Enables the use of trapping in the assembler.
+  bool UseTCCInDIV;
+
+  // Sym32 -- On Mips64 symbols are 32 bits.
+  bool HasSym32;
+
+  // HasEVA -- supports EVA ASE.
+  bool HasEVA;
+
   InstrItineraryData InstrItins;
 
   // We can override the determination of whether we are in mips16 mode
@@ -140,19 +158,18 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
 
   Triple TargetTriple;
 
-  const TargetSelectionDAGInfo TSInfo;
+  const SelectionDAGTargetInfo TSInfo;
   std::unique_ptr<const MipsInstrInfo> InstrInfo;
   std::unique_ptr<const MipsFrameLowering> FrameLowering;
   std::unique_ptr<const MipsTargetLowering> TLInfo;
 
 public:
+  bool isPositionIndependent() const;
   /// This overrides the PostRAScheduler bit in the SchedModel for each CPU.
   bool enablePostRAScheduler() const override;
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
   CodeGenOpt::Level getOptLevelToEnablePostRAScheduler() const override;
 
-  /// Only O32 and EABI supported right now.
-  bool isABI_EABI() const;
   bool isABI_N64() const;
   bool isABI_N32() const;
   bool isABI_O32() const;
@@ -213,7 +230,13 @@ public:
   bool isGP64bit() const { return IsGP64bit; }
   bool isGP32bit() const { return !IsGP64bit; }
   unsigned getGPRSizeInBytes() const { return isGP64bit() ? 8 : 4; }
+  bool isPTR64bit() const { return IsPTR64bit; }
+  bool isPTR32bit() const { return !IsPTR64bit; }
+  bool hasSym32() const {
+    return (HasSym32 && isABI_N64()) || isABI_N32() || isABI_O32();
+  }
   bool isSingleFloat() const { return IsSingleFloat; }
+  bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
   bool hasVFPU() const { return HasVFPU; }
   bool inMips16Mode() const { return InMips16Mode; }
   bool inMips16ModeDefault() const {
@@ -228,9 +251,12 @@ public:
   }
   bool inMicroMipsMode() const { return InMicroMipsMode; }
   bool inMicroMips32r6Mode() const { return InMicroMipsMode && hasMips32r6(); }
+  bool inMicroMips64r6Mode() const { return InMicroMipsMode && hasMips64r6(); }
   bool hasDSP() const { return HasDSP; }
   bool hasDSPR2() const { return HasDSPR2; }
+  bool hasDSPR3() const { return HasDSPR3; }
   bool hasMSA() const { return HasMSA; }
+  bool hasEVA() const { return HasEVA; }
   bool useSmallSection() const { return UseSmallSection; }
 
   bool hasStandardEncoding() const { return !inMips16Mode(); }
@@ -251,6 +277,8 @@ public:
   bool os16() const { return Os16; }
 
   bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }
+
+  bool isXRaySupported() const override { return true; }
 
   // for now constant islands are on for the whole compilation unit but we only
   // really use them if in addition we are in mips16 mode
@@ -275,7 +303,7 @@ public:
   void setHelperClassesMips16();
   void setHelperClassesMipsSE();
 
-  const TargetSelectionDAGInfo *getSelectionDAGInfo() const override {
+  const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
     return &TSInfo;
   }
   const MipsInstrInfo *getInstrInfo() const override { return InstrInfo.get(); }

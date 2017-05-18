@@ -14,14 +14,20 @@
 #ifndef LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H
 #define LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H
 
-#include "JITSymbol.h"
-#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include <algorithm>
+#include <cassert>
 #include <list>
+#include <memory>
+#include <string>
 
 namespace llvm {
 namespace orc {
@@ -39,8 +45,8 @@ public:
 private:
   class EmissionDeferredSet {
   public:
-    EmissionDeferredSet() : EmitState(NotEmitted) {}
-    virtual ~EmissionDeferredSet() {}
+    EmissionDeferredSet() = default;
+    virtual ~EmissionDeferredSet() = default;
 
     JITSymbol find(StringRef Name, bool ExportedSymbolsOnly, BaseLayerT &B) {
       switch (EmitState) {
@@ -50,9 +56,9 @@ private:
           // (a StringRef) may go away before the lambda is executed.
           // FIXME: Use capture-init when we move to C++14.
           std::string PName = Name;
-          JITSymbolFlags Flags = JITSymbolBase::flagsFromGlobalValue(*GV);
+          JITSymbolFlags Flags = JITSymbolFlags::fromGlobalValue(*GV);
           auto GetAddress =
-            [this, ExportedSymbolsOnly, PName, &B]() -> TargetAddress {
+            [this, ExportedSymbolsOnly, PName, &B]() -> JITTargetAddress {
               if (this->EmitState == Emitting)
                 return 0;
               else if (this->EmitState == NotEmitted) {
@@ -67,10 +73,10 @@ private:
         } else
           return nullptr;
       case Emitting:
-        // Calling "emit" can trigger external symbol lookup (e.g. to check for
-        // pre-existing definitions of common-symbol), but it will never find in
-        // this module that it would not have found already, so return null from
-        // here.
+        // Calling "emit" can trigger a recursive call to 'find' (e.g. to check
+        // for pre-existing definitions of common-symbol), but any symbol in
+        // this module would already have been found internally (in the
+        // RuntimeDyld that did the lookup), so just return a nullptr here.
         return nullptr;
       case Emitted:
         return B.findSymbolIn(Handle, Name, ExportedSymbolsOnly);
@@ -106,7 +112,7 @@ private:
     virtual BaseLayerHandleT emitToBaseLayer(BaseLayerT &BaseLayer) = 0;
 
   private:
-    enum { NotEmitted, Emitting, Emitted } EmitState;
+    enum { NotEmitted, Emitting, Emitted } EmitState = NotEmitted;
     BaseLayerHandleT Handle;
   };
 
@@ -121,7 +127,6 @@ private:
           Resolver(std::move(Resolver)) {}
 
   protected:
-
     const GlobalValue* searchGVs(StringRef Name,
                                  bool ExportedSymbolsOnly) const override {
       // FIXME: We could clean all this up if we had a way to reliably demangle
@@ -195,13 +200,8 @@ private:
       for (const auto &M : Ms) {
         Mangler Mang;
 
-        for (const auto &V : M->globals())
-          if (auto GV = addGlobalValue(*Symbols, V, Mang, SearchName,
-                                       ExportedSymbolsOnly))
-            return GV;
-
-        for (const auto &F : *M)
-          if (auto GV = addGlobalValue(*Symbols, F, Mang, SearchName,
+        for (const auto &GO : M->global_objects())
+          if (auto GV = addGlobalValue(*Symbols, GO, Mang, SearchName,
                                        ExportedSymbolsOnly))
             return GV;
       }
@@ -282,7 +282,6 @@ public:
   void emitAndFinalize(ModuleSetHandleT H) {
     (*H)->emitAndFinalize(BaseLayer);
   }
-
 };
 
 template <typename BaseLayerT>
@@ -298,7 +297,7 @@ LazyEmittingLayer<BaseLayerT>::EmissionDeferredSet::create(
                                 std::move(Resolver));
 }
 
-} // End namespace orc.
-} // End namespace llvm.
+} // end namespace orc
+} // end namespace llvm
 
 #endif // LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H

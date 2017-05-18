@@ -1,11 +1,11 @@
-; RUN: llc %s -mtriple=aarch64-none-linux-gnu -aarch64-global-merge -o - | FileCheck %s
-; RUN: llc %s -mtriple=aarch64-none-linux-gnu -aarch64-global-merge -global-merge-on-external -o - | FileCheck %s
+; RUN: llc %s -mtriple=aarch64-none-linux-gnu -aarch64-enable-global-merge -o - | FileCheck %s
+; RUN: llc %s -mtriple=aarch64-none-linux-gnu -aarch64-enable-global-merge -global-merge-on-external -o - | FileCheck %s
 
-; RUN: llc %s -mtriple=aarch64-linux-gnuabi -aarch64-global-merge -o - | FileCheck %s
-; RUN: llc %s -mtriple=aarch64-linux-gnuabi -aarch64-global-merge -global-merge-on-external -o - | FileCheck %s
+; RUN: llc %s -mtriple=aarch64-linux-gnuabi -aarch64-enable-global-merge -o - | FileCheck %s
+; RUN: llc %s -mtriple=aarch64-linux-gnuabi -aarch64-enable-global-merge -global-merge-on-external -o - | FileCheck %s
 
-; RUN: llc %s -mtriple=aarch64-apple-ios -aarch64-global-merge -o - | FileCheck %s --check-prefix=CHECK-APPLE-IOS
-; RUN: llc %s -mtriple=aarch64-apple-ios -aarch64-global-merge -global-merge-on-external -o - | FileCheck %s --check-prefix=CHECK-APPLE-IOS
+; RUN: llc %s -mtriple=aarch64-apple-ios -aarch64-enable-global-merge -o - | FileCheck %s --check-prefix=CHECK-APPLE-IOS
+; RUN: llc %s -mtriple=aarch64-apple-ios -aarch64-enable-global-merge -global-merge-on-external -o - | FileCheck %s --check-prefix=CHECK-APPLE-IOS
 
 @m = internal global i32 0, align 4
 @n = internal global i32 0, align 4
@@ -20,8 +20,12 @@ define void @f1(i32 %a1, i32 %a2) {
   ret void
 }
 
-;CHECK:	.type	_MergedGlobals,@object  // @_MergedGlobals
-;CHECK:	.local	_MergedGlobals
-;CHECK:	.comm	_MergedGlobals,8,8
+;CHECK:	.type	.L_MergedGlobals,@object  // @_MergedGlobals
+;CHECK:	.local	.L_MergedGlobals
+;CHECK:	.comm	.L_MergedGlobals,8,8
+;CHECK: m = .L_MergedGlobals
+;CHECK: n = .L_MergedGlobals+4
 
 ;CHECK-APPLE-IOS: .zerofill __DATA,__bss,__MergedGlobals,8,3 ; @_MergedGlobals
+;CHECK-APPLE-IOS-NOT: _m = l__MergedGlobals
+;CHECK-APPLE-IOS-NOT: _n = l__MergedGlobals+4

@@ -1,4 +1,5 @@
 ; RUN: opt < %s -basicaa -dse -S | FileCheck %s
+; RUN: opt < %s -aa-pipeline=basic-aa -passes=dse -S | FileCheck %s
 target datalayout = "E-p:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128"
 
 declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i32, i1) nounwind
@@ -349,4 +350,174 @@ define i8* @test25(i8* %p) nounwind {
   %q = call i8* @strdup(i8* %p) nounwind optsize
   store i8 %tmp, i8* %p.4, align 1
   ret i8* %q
+}
+
+; Remove redundant store if loaded value is in another block.
+; CHECK-LABEL: @test26(
+; CHECK-NOT: store
+; CHECK: ret
+define i32 @test26(i1 %c, i32* %p) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br i1 %c, label %bb1, label %bb2
+bb1:
+  br label %bb3
+bb2:
+  store i32 %v, i32* %p, align 4
+  br label %bb3
+bb3:
+  ret i32 0
+}
+
+; Remove redundant store if loaded value is in another block.
+; CHECK-LABEL: @test27(
+; CHECK-NOT: store
+; CHECK: ret
+define i32 @test27(i1 %c, i32* %p) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br i1 %c, label %bb1, label %bb2
+bb1:
+  br label %bb3
+bb2:
+  br label %bb3
+bb3:
+  store i32 %v, i32* %p, align 4
+  ret i32 0
+}
+
+; Don't remove redundant store because of may-aliased store.
+; CHECK-LABEL: @test28(
+; CHECK: bb3:
+; CHECK-NEXT: store i32 %v
+define i32 @test28(i1 %c, i32* %p, i32* %p2, i32 %i) {
+entry:
+  %v = load i32, i32* %p, align 4
+
+  ; Might overwrite value at %p
+  store i32 %i, i32* %p2, align 4
+  br i1 %c, label %bb1, label %bb2
+bb1:
+  br label %bb3
+bb2:
+  br label %bb3
+bb3:
+  store i32 %v, i32* %p, align 4
+  ret i32 0
+}
+
+; Don't remove redundant store because of may-aliased store.
+; CHECK-LABEL: @test29(
+; CHECK: bb3:
+; CHECK-NEXT: store i32 %v
+define i32 @test29(i1 %c, i32* %p, i32* %p2, i32 %i) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br i1 %c, label %bb1, label %bb2
+bb1:
+  br label %bb3
+bb2:
+  ; Might overwrite value at %p
+  store i32 %i, i32* %p2, align 4
+  br label %bb3
+bb3:
+  store i32 %v, i32* %p, align 4
+  ret i32 0
+}
+
+declare void @unknown_func()
+
+; Don't remove redundant store because of unknown call.
+; CHECK-LABEL: @test30(
+; CHECK: bb3:
+; CHECK-NEXT: store i32 %v
+define i32 @test30(i1 %c, i32* %p, i32 %i) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br i1 %c, label %bb1, label %bb2
+bb1:
+  br label %bb3
+bb2:
+  ; Might overwrite value at %p
+  call void @unknown_func()
+  br label %bb3
+bb3:
+  store i32 %v, i32* %p, align 4
+  ret i32 0
+}
+
+; Remove redundant store if loaded value is in another block inside a loop.
+; CHECK-LABEL: @test31(
+; CHECK-NOT: store
+; CHECK: ret
+define i32 @test31(i1 %c, i32* %p, i32 %i) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br label %bb1
+bb1:
+  store i32 %v, i32* %p, align 4
+  br i1 undef, label %bb1, label %bb2
+bb2:
+  ret i32 0
+}
+
+; Don't remove redundant store in a loop with a may-alias store.
+; CHECK-LABEL: @test32(
+; CHECK: bb1:
+; CHECK-NEXT: store i32 %v
+; CHECK-NEXT: call void @unknown_func
+define i32 @test32(i1 %c, i32* %p, i32 %i) {
+entry:
+  %v = load i32, i32* %p, align 4
+  br label %bb1
+bb1:
+  store i32 %v, i32* %p, align 4
+  ; Might read and overwrite value at %p
+  call void @unknown_func()
+  br i1 undef, label %bb1, label %bb2
+bb2:
+  ret i32 0
+}
+
+; Remove redundant store, which is in the lame loop as the load.
+; CHECK-LABEL: @test33(
+; CHECK-NOT: store
+; CHECK: ret
+define i32 @test33(i1 %c, i32* %p, i32 %i) {
+entry:
+  br label %bb1
+bb1:
+  %v = load i32, i32* %p, align 4
+  br label %bb2
+bb2:
+  store i32 %v, i32* %p, align 4
+  ; Might read and overwrite value at %p, but doesn't matter.
+  call void @unknown_func()
+  br i1 undef, label %bb1, label %bb3
+bb3:
+  ret i32 0
+}
+
+; Don't remove redundant store: unknown_func could unwind
+; CHECK-LABEL: @test34(
+; CHECK: store i32 1
+; CHECK: store i32 0
+; CHECK: ret
+define void @test34(i32* noalias %p) {
+  store i32 1, i32* %p
+  call void @unknown_func()
+  store i32 0, i32* %p
+  ret void
+}
+
+; Remove redundant store even with an unwinding function in the same block
+; CHECK-LABEL: @test35(
+; CHECK: call void @unknown_func
+; CHECK-NEXT: store i32 0
+; CHECK-NEXT: ret void
+define void @test35(i32* noalias %p) {
+  call void @unknown_func()
+  store i32 1, i32* %p
+  store i32 0, i32* %p
+  ret void
 }

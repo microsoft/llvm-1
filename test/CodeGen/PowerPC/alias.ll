@@ -1,11 +1,11 @@
-; RUN: llc < %s -mtriple=powerpc64-unknown-linux-gnu -code-model=medium| FileCheck --check-prefix=CHECK --check-prefix=MEDIUM %s
-; RUN: llc < %s -mtriple=powerpc64-unknown-linux-gnu -code-model=large | FileCheck --check-prefix=CHECK --check-prefix=LARGE %s
+; RUN: llc -relocation-model=static -verify-machineinstrs < %s -mtriple=powerpc64-unknown-linux-gnu -code-model=medium| FileCheck --check-prefix=CHECK --check-prefix=MEDIUM %s
+; RUN: llc -relocation-model=static -verify-machineinstrs < %s -mtriple=powerpc64-unknown-linux-gnu -code-model=large | FileCheck --check-prefix=CHECK --check-prefix=LARGE %s
 
 @foo = global i32 42
-@fooa = alias i32* @foo
+@fooa = alias i32, i32* @foo
 
 @foo2 = global i64 42
-@foo2a = alias i64* @foo2
+@foo2a = alias i64, i64* @foo2
 
 ; CHECK-LABEL: bar:
 define i32 @bar() {

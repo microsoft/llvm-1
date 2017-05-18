@@ -1,4 +1,4 @@
-# RUN: not llc -march=x86-64 -start-after branch-folder -stop-after branch-folder -o /dev/null %s 2>&1 | FileCheck %s
+# RUN: not llc -march=x86-64 -run-pass none -o /dev/null %s 2>&1 | FileCheck %s
 # This test ensures that an error is reported when a register operand doesn't
 # follow register flags.
 
@@ -12,11 +12,9 @@
 ...
 ---
 name:            foo
-body:
- - id:           0
-   name:         entry
-   instructions:
-     # CHECK: [[@LINE+1]]:37: expected a register after register flags
-     - '%eax = MOV32r0 implicit-def 2'
-     - 'RETQ %eax'
+body: |
+  bb.0.entry:
+    ; CHECK: [[@LINE+1]]:33: expected a register after register flags
+    %eax = MOV32r0 implicit-def 2
+    RETQ %eax
 ...

@@ -1,5 +1,5 @@
-; RUN: opt -S < %s -loop-vectorize -force-vector-interleave=2 -force-vector-width=4 -enable-interleaved-mem-accesses=true | FileCheck %s
-; RUN: opt -S < %s -loop-vectorize -force-vector-interleave=1 -force-vector-width=2 -enable-interleaved-mem-accesses=true | FileCheck %s --check-prefix=FORCE-VEC
+; RUN: opt -S < %s -loop-vectorize -force-vector-interleave=2 -force-vector-width=4 | FileCheck %s
+; RUN: opt -S < %s -loop-vectorize -force-vector-interleave=1 -force-vector-width=2 | FileCheck %s --check-prefix=FORCE-VEC
 
 target datalayout = "e-m:e-i64:64-i128:128-n32:64-S128"
 target triple = "aarch64--linux-gnueabi"
@@ -103,10 +103,10 @@ for.end:                                          ; preds = %for.body
 
 ; CHECK-LABEL: @ptr_ind_plus2(
 ; CHECK: %[[V0:.*]] = load <8 x i32>
-; CHECK: shufflevector <8 x i32> %[[V0]], <8 x i32> undef, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK: shufflevector <8 x i32> %[[V0]], <8 x i32> undef, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
 ; CHECK: %[[V1:.*]] = load <8 x i32>
+; CHECK: shufflevector <8 x i32> %[[V0]], <8 x i32> undef, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
 ; CHECK: shufflevector <8 x i32> %[[V1]], <8 x i32> undef, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
+; CHECK: shufflevector <8 x i32> %[[V0]], <8 x i32> undef, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
 ; CHECK: shufflevector <8 x i32> %[[V1]], <8 x i32> undef, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
 ; CHECK: mul nsw <4 x i32>
 ; CHECK: mul nsw <4 x i32>

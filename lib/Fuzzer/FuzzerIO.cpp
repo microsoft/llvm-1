@@ -8,51 +8,44 @@
 //===----------------------------------------------------------------------===//
 // IO functions.
 //===----------------------------------------------------------------------===//
-#include "FuzzerInternal.h"
-#include <iterator>
+
+#include "FuzzerIO.h"
+#include "FuzzerDefs.h"
+#include "FuzzerExtFunctions.h"
+#include <algorithm>
+#include <cstdarg>
 #include <fstream>
-#include <dirent.h>
-#include <sys/types.h>
+#include <iterator>
 #include <sys/stat.h>
-#include <unistd.h>
-#include <cstdio>
+#include <sys/types.h>
 
 namespace fuzzer {
 
-static long GetEpoch(const std::string &Path) {
+static FILE *OutputFile = stderr;
+
+long GetEpoch(const std::string &Path) {
   struct stat St;
-  if (stat(Path.c_str(), &St)) {
-    Printf("Can not stat: %s; exiting\n", Path.c_str());
-    exit(1);
-  }
+  if (stat(Path.c_str(), &St))
+    return 0;  // Can't stat, be conservative.
   return St.st_mtime;
 }
 
-static std::vector<std::string> ListFilesInDir(const std::string &Dir,
-                                               long *Epoch) {
-  std::vector<std::string> V;
-  if (Epoch) {
-    auto E = GetEpoch(Dir.c_str());
-    if (*Epoch >= E) return V;
-    *Epoch = E;
-  }
-  DIR *D = opendir(Dir.c_str());
-  if (!D) {
-    Printf("No such directory: %s; exiting\n", Dir.c_str());
+Unit FileToVector(const std::string &Path, size_t MaxSize, bool ExitOnError) {
+  std::ifstream T(Path);
+  if (ExitOnError && !T) {
+    Printf("No such directory: %s; exiting\n", Path.c_str());
     exit(1);
   }
-  while (auto E = readdir(D)) {
-    if (E->d_type == DT_REG || E->d_type == DT_LNK)
-      V.push_back(E->d_name);
-  }
-  closedir(D);
-  return V;
-}
 
-Unit FileToVector(const std::string &Path) {
-  std::ifstream T(Path);
-  return Unit((std::istreambuf_iterator<char>(T)),
-              std::istreambuf_iterator<char>());
+  T.seekg(0, T.end);
+  size_t FileLen = T.tellg();
+  if (MaxSize)
+    FileLen = std::min(FileLen, MaxSize);
+
+  T.seekg(0, T.beg);
+  Unit Res(FileLen);
+  T.read(reinterpret_cast<char *>(Res.data()), FileLen);
+  return Res;
 }
 
 std::string FileToString(const std::string &Path) {
@@ -66,35 +59,60 @@ void CopyFileToErr(const std::string &Path) {
 }
 
 void WriteToFile(const Unit &U, const std::string &Path) {
-  std::ofstream OF(Path);
-  OF.write((const char*)U.data(), U.size());
+  // Use raw C interface because this function may be called from a sig handler.
+  FILE *Out = fopen(Path.c_str(), "w");
+  if (!Out) return;
+  fwrite(U.data(), sizeof(U[0]), U.size(), Out);
+  fclose(Out);
 }
 
 void ReadDirToVectorOfUnits(const char *Path, std::vector<Unit> *V,
-                            long *Epoch) {
+                            long *Epoch, size_t MaxSize, bool ExitOnError) {
   long E = Epoch ? *Epoch : 0;
-  for (auto &X : ListFilesInDir(Path, Epoch)) {
-    auto FilePath = DirPlusFile(Path, X);
-    if (Epoch && GetEpoch(FilePath) < E) continue;
-    V->push_back(FileToVector(FilePath));
+  std::vector<std::string> Files;
+  ListFilesInDirRecursive(Path, Epoch, &Files, /*TopDir*/true);
+  size_t NumLoaded = 0;
+  for (size_t i = 0; i < Files.size(); i++) {
+    auto &X = Files[i];
+    if (Epoch && GetEpoch(X) < E) continue;
+    NumLoaded++;
+    if ((NumLoaded & (NumLoaded - 1)) == 0 && NumLoaded >= 1024)
+      Printf("Loaded %zd/%zd files from %s\n", NumLoaded, Files.size(), Path);
+    auto S = FileToVector(X, MaxSize, ExitOnError);
+    if (!S.empty())
+      V->push_back(S);
   }
 }
 
 std::string DirPlusFile(const std::string &DirPath,
                         const std::string &FileName) {
-  return DirPath + "/" + FileName;
+  return DirPath + GetSeparator() + FileName;
 }
 
-void PrintFileAsBase64(const std::string &Path) {
-  std::string Cmd = "base64 -w 0 < " + Path + "; echo";
-  ExecuteCommand(Cmd);
+void DupAndCloseStderr() {
+  int OutputFd = DuplicateFile(2);
+  if (OutputFd > 0) {
+    FILE *NewOutputFile = OpenFile(OutputFd, "w");
+    if (NewOutputFile) {
+      OutputFile = NewOutputFile;
+      if (EF->__sanitizer_set_report_fd)
+        EF->__sanitizer_set_report_fd(
+            reinterpret_cast<void *>(GetHandleFromFd(OutputFd)));
+      DiscardOutput(2);
+    }
+  }
+}
+
+void CloseStdout() {
+  DiscardOutput(1);
 }
 
 void Printf(const char *Fmt, ...) {
   va_list ap;
   va_start(ap, Fmt);
-  vfprintf(stderr, Fmt, ap);
+  vfprintf(OutputFile, Fmt, ap);
   va_end(ap);
+  fflush(OutputFile);
 }
 
 }  // namespace fuzzer

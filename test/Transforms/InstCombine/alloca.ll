@@ -1,5 +1,5 @@
-; RUN: opt < %s -instcombine -S -default-data-layout="E-p:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128" | FileCheck %s -check-prefix=CHECK -check-prefix=ALL
-; RUN: opt < %s -instcombine -S -default-data-layout="E-p:32:32:32-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128" | FileCheck %s -check-prefix=P32 -check-prefix=ALL
+; RUN: opt < %s -instcombine -S -data-layout="E-p:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128" | FileCheck %s -check-prefix=CHECK -check-prefix=ALL
+; RUN: opt < %s -instcombine -S -data-layout="E-p:32:32:32-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128" | FileCheck %s -check-prefix=P32 -check-prefix=ALL
 ; RUN: opt < %s -instcombine -S | FileCheck %s -check-prefix=NODL -check-prefix=ALL
 
 
@@ -161,5 +161,16 @@ entry:
   %v64 = alloca i1, i64 1, align 8
   %v33 = alloca i1, i33 1, align 8
   call void (...) @use(i1* %v32, i1* %v64, i1* %v33)
+  ret void
+}
+
+define void @test11() {
+entry:
+; ALL-LABEL: @test11(
+; ALL: %y = alloca i32
+; ALL: call void (...) @use(i32* nonnull @int) [ "blah"(i32* %y) ]
+; ALL: ret void
+  %y = alloca i32
+  call void (...) @use(i32* nonnull @int) [ "blah"(i32* %y) ]
   ret void
 }

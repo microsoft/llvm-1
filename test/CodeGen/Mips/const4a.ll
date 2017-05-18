@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=mipsel-linux-gnu -march=mipsel -mcpu=mips16 -mattr=+soft-float -mips16-hard-float -relocation-model=pic -mips16-constant-islands -mips-constant-islands-no-load-relaxation  < %s | FileCheck %s -check-prefix=no-load-relax
+; RUN: llc -mtriple=mipsel-linux-gnu -march=mipsel -mattr=mips16 -mattr=+soft-float -mips16-hard-float -relocation-model=pic -mips16-constant-islands -mips-constant-islands-no-load-relaxation  < %s | FileCheck %s -check-prefix=no-load-relax
 
 ; ModuleID = 'const4.c'
 target datalayout = "E-p:32:32:32-i1:8:8-i8:8:32-i16:16:32-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-n32-S64"
@@ -21,7 +21,7 @@ entry:
 ; no-load-relax:	beqz	${{[0-9]+}}, $BB0_3
 ; no-load-relax:	lw	${{[0-9]+}}, %call16(foo)(${{[0-9]+}})
 ; no-load-relax:	b	$BB0_4
-; no-load-relax:	.align	2
+; no-load-relax:	.p2align	2
 ; no-load-relax: $CPI0_1:
 ; no-load-relax:	.4byte	3735943886
 ; no-load-relax: $BB0_3:

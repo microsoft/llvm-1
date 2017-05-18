@@ -14,6 +14,7 @@
 #ifndef LLVM_ADT_DENSEMAPINFO_H
 #define LLVM_ADT_DENSEMAPINFO_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
@@ -58,7 +59,17 @@ template<> struct DenseMapInfo<char> {
     return LHS == RHS;
   }
 };
-  
+
+// Provide DenseMapInfo for unsigned shorts.
+template <> struct DenseMapInfo<unsigned short> {
+  static inline unsigned short getEmptyKey() { return 0xFFFF; }
+  static inline unsigned short getTombstoneKey() { return 0xFFFF - 1; }
+  static unsigned getHashValue(const unsigned short &Val) { return Val * 37U; }
+  static bool isEqual(const unsigned short &LHS, const unsigned short &RHS) {
+    return LHS == RHS;
+  }
+};
+
 // Provide DenseMapInfo for unsigned ints.
 template<> struct DenseMapInfo<unsigned> {
   static inline unsigned getEmptyKey() { return ~0U; }
@@ -92,6 +103,14 @@ template<> struct DenseMapInfo<unsigned long long> {
                       const unsigned long long& RHS) {
     return LHS == RHS;
   }
+};
+
+// Provide DenseMapInfo for shorts.
+template <> struct DenseMapInfo<short> {
+  static inline short getEmptyKey() { return 0x7FFF; }
+  static inline short getTombstoneKey() { return -0x7FFF - 1; }
+  static unsigned getHashValue(const short &Val) { return Val * 37U; }
+  static bool isEqual(const short &LHS, const short &RHS) { return LHS == RHS; }
 };
 
 // Provide DenseMapInfo for ints.
@@ -182,6 +201,31 @@ template <> struct DenseMapInfo<StringRef> {
     return (unsigned)(hash_value(Val));
   }
   static bool isEqual(StringRef LHS, StringRef RHS) {
+    if (RHS.data() == getEmptyKey().data())
+      return LHS.data() == getEmptyKey().data();
+    if (RHS.data() == getTombstoneKey().data())
+      return LHS.data() == getTombstoneKey().data();
+    return LHS == RHS;
+  }
+};
+
+// Provide DenseMapInfo for ArrayRefs.
+template <typename T> struct DenseMapInfo<ArrayRef<T>> {
+  static inline ArrayRef<T> getEmptyKey() {
+    return ArrayRef<T>(reinterpret_cast<const T *>(~static_cast<uintptr_t>(0)),
+                       size_t(0));
+  }
+  static inline ArrayRef<T> getTombstoneKey() {
+    return ArrayRef<T>(reinterpret_cast<const T *>(~static_cast<uintptr_t>(1)),
+                       size_t(0));
+  }
+  static unsigned getHashValue(ArrayRef<T> Val) {
+    assert(Val.data() != getEmptyKey().data() && "Cannot hash the empty key!");
+    assert(Val.data() != getTombstoneKey().data() &&
+           "Cannot hash the tombstone key!");
+    return (unsigned)(hash_value(Val));
+  }
+  static bool isEqual(ArrayRef<T> LHS, ArrayRef<T> RHS) {
     if (RHS.data() == getEmptyKey().data())
       return LHS.data() == getEmptyKey().data();
     if (RHS.data() == getTombstoneKey().data())

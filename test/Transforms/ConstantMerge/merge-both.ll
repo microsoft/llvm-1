@@ -1,4 +1,4 @@
-; RUN: opt -constmerge -S < %s | FileCheck %s
+; RUN: opt -S < %s -passes=constmerge | FileCheck %s
 ; Test that in one run var3 is merged into var2 and var1 into var4.
 ; Test that we merge @var5 and @var6 into one with the higher alignment
 
@@ -25,7 +25,7 @@ declare void @helper([16 x i8]*)
 ; CHECK-NEXT: @var7 = internal constant [16 x i8] c"foo1bar2foo3bar\00"
 ; CHECK-NEXT: @var8 = private constant [16 x i8] c"foo1bar2foo3bar\00", align 16
 
-@var4a = alias %struct.foobar* @var4
+@var4a = alias %struct.foobar, %struct.foobar* @var4
 @llvm.used = appending global [1 x %struct.foobar*] [%struct.foobar* @var4a], section "llvm.metadata"
 
 define i32 @main() {

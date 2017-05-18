@@ -447,7 +447,7 @@ entry:
   %0 = trunc i32 %mul to i8
   %1 = insertelement <8 x i8> undef, i8 %0, i32 0
   %2 = shufflevector <8 x i8> %1, <8 x i8> undef, <8 x i32> zeroinitializer
-  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %src, i32 1)
+  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8.p0i8(i8* %src, i32 1)
   %4 = bitcast <16 x i8> %3 to <2 x double>
   %5 = extractelement <2 x double> %4, i32 1
   %6 = bitcast double %5 to <8 x i8>
@@ -459,13 +459,13 @@ entry:
   %12 = add <8 x i16> %7, %11
   %13 = mul <8 x i16> %12, %8
   %14 = bitcast i16* %dst to i8*
-  tail call void @llvm.arm.neon.vst1.v8i16(i8* %14, <8 x i16> %13, i32 2)
+  tail call void @llvm.arm.neon.vst1.p0i8.v8i16(i8* %14, <8 x i16> %13, i32 2)
   ret void
 }
 
-declare <16 x i8> @llvm.arm.neon.vld1.v16i8(i8*, i32) nounwind readonly
+declare <16 x i8> @llvm.arm.neon.vld1.v16i8.p0i8(i8*, i32) nounwind readonly
 
-declare void @llvm.arm.neon.vst1.v8i16(i8*, <8 x i16>, i32) nounwind
+declare void @llvm.arm.neon.vst1.p0i8.v8i16(i8*, <8 x i16>, i32) nounwind
 
 ; Take advantage of the Cortex-A8 multiplier accumulator forward.
 
@@ -480,7 +480,7 @@ entry:
   %0 = trunc i32 %mul to i8
   %1 = insertelement <8 x i8> undef, i8 %0, i32 0
   %2 = shufflevector <8 x i8> %1, <8 x i8> undef, <8 x i32> zeroinitializer
-  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %src, i32 1)
+  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8.p0i8(i8* %src, i32 1)
   %4 = bitcast <16 x i8> %3 to <2 x double>
   %5 = extractelement <2 x double> %4, i32 1
   %6 = bitcast double %5 to <8 x i8>
@@ -502,7 +502,7 @@ entry:
   %0 = trunc i32 %mul to i8
   %1 = insertelement <8 x i8> undef, i8 %0, i32 0
   %2 = shufflevector <8 x i8> %1, <8 x i8> undef, <8 x i32> zeroinitializer
-  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %src, i32 1)
+  %3 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8.p0i8(i8* %src, i32 1)
   %4 = bitcast <16 x i8> %3 to <2 x double>
   %5 = extractelement <2 x double> %4, i32 1
   %6 = bitcast double %5 to <8 x i8>
@@ -559,7 +559,7 @@ for.body33.lr.ph:                                 ; preds = %for.body
 
 for.body33:                                       ; preds = %for.body33, %for.body33.lr.ph
   %add45 = add i32 undef, undef
-  %vld155 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* undef, i32 1)
+  %vld155 = tail call <16 x i8> @llvm.arm.neon.vld1.v16i8.p0i8(i8* undef, i32 1)
   %0 = load i32*, i32** undef, align 4
   %shuffle.i250 = shufflevector <2 x i64> undef, <2 x i64> undef, <1 x i32> zeroinitializer
   %1 = bitcast <1 x i64> %shuffle.i250 to <8 x i8>
@@ -635,13 +635,26 @@ entry:
   ret void
 }
 
-define void @foo(<4 x float> * %a, <4 x float>* nocapture %dst, float* nocapture readonly %src) nounwind {
-;   Look for doing a normal scalar FP load rather than an to-all-lanes load.
-;   e.g., "ldr s0, [r2]" rathern than "vld1.32  {d18[], d19[]}, [r2:32]"
-;   Then check that the vector multiply has folded the splat to all lanes
-;   and used a vector * scalar instruction.
-; CHECK: vldr  {{s[0-9]+}}, [r2]
+define void @fmul_splat(<4 x float> * %a, <4 x float>* nocapture %dst, float %tmp) nounwind {
+; Look for a scalar float rather than a splat, then a vector*scalar multiply.
+; CHECK: vmov s0, r2
 ; CHECK: vmul.f32  q8, q8, d0[0]
+  %tmp5 = load <4 x float>, <4 x float>* %a, align 4
+  %tmp6 = insertelement <4 x float> undef, float %tmp, i32 0
+  %tmp7 = insertelement <4 x float> %tmp6, float %tmp, i32 1
+  %tmp8 = insertelement <4 x float> %tmp7, float %tmp, i32 2
+  %tmp9 = insertelement <4 x float> %tmp8, float %tmp, i32 3
+  %tmp10 = fmul <4 x float> %tmp9, %tmp5
+  store <4 x float> %tmp10, <4 x float>* %dst, align 4
+  ret void
+}
+
+define void @fmul_splat_load(<4 x float> * %a, <4 x float>* nocapture %dst, float* nocapture readonly %src) nounwind {
+; Look for doing a normal scalar FP load rather than an to-all-lanes load,
+; then a vector*scalar multiply.
+; FIXME: Temporarily broken due to splat representation changes.
+; CHECK: vld1.32 {d18[], d19[]}, [r2:32]
+; CHECK: vmul.f32  q8, q9, q8
   %tmp = load float, float* %src, align 4
   %tmp5 = load <4 x float>, <4 x float>* %a, align 4
   %tmp6 = insertelement <4 x float> undef, float %tmp, i32 0

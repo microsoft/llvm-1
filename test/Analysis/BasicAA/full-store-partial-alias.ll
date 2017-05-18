@@ -1,5 +1,5 @@
-; RUN: opt -S -tbaa -basicaa -gvn < %s | FileCheck -check-prefix=BASICAA %s
-; RUN: opt -S -tbaa -gvn < %s | FileCheck %s
+; RUN: opt -S -tbaa -gvn < %s | FileCheck -check-prefix=BASICAA %s
+; RUN: opt -S -tbaa -disable-basicaa -gvn < %s | FileCheck %s
 ; rdar://8875631, rdar://8875069
 
 ; BasicAA should notice that the store stores to the entire %u object,
@@ -31,7 +31,7 @@ entry:
 
 !0 = !{!4, !4, i64 0}
 !1 = !{!"omnipotent char", !2}
-!2 = !{!"Simple C/C++ TBAA", null}
+!2 = !{!"Simple C/C++ TBAA"}
 !3 = !{!5, !5, i64 0}
 !4 = !{!"double", !1}
 !5 = !{!"int", !1}

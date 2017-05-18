@@ -8,113 +8,101 @@
 //===----------------------------------------------------------------------===//
 // Define the main class fuzzer::Fuzzer and most functions.
 //===----------------------------------------------------------------------===//
-#include <cassert>
-#include <climits>
-#include <chrono>
-#include <cstddef>
-#include <cstdlib>
-#include <string>
-#include <vector>
-#include <unordered_set>
 
+#ifndef LLVM_FUZZER_INTERNAL_H
+#define LLVM_FUZZER_INTERNAL_H
+
+#include "FuzzerDefs.h"
+#include "FuzzerExtFunctions.h"
 #include "FuzzerInterface.h"
+#include "FuzzerOptions.h"
+#include "FuzzerSHA1.h"
+#include "FuzzerValueBitMap.h"
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <climits>
+#include <cstdlib>
+#include <string.h>
 
 namespace fuzzer {
-typedef std::vector<uint8_t> Unit;
+
 using namespace std::chrono;
 
-std::string FileToString(const std::string &Path);
-Unit FileToVector(const std::string &Path);
-void ReadDirToVectorOfUnits(const char *Path, std::vector<Unit> *V,
-                            long *Epoch);
-void WriteToFile(const Unit &U, const std::string &Path);
-void CopyFileToErr(const std::string &Path);
-// Returns "Dir/FileName" or equivalent for the current OS.
-std::string DirPlusFile(const std::string &DirPath,
-                        const std::string &FileName);
-
-size_t Mutate(uint8_t *Data, size_t Size, size_t MaxSize,
-              FuzzerRandomBase &Rand);
-
-size_t CrossOver(const uint8_t *Data1, size_t Size1, const uint8_t *Data2,
-                 size_t Size2, uint8_t *Out, size_t MaxOutSize,
-                 FuzzerRandomBase &Rand);
-
-void Printf(const char *Fmt, ...);
-void Print(const Unit &U, const char *PrintAfter = "");
-void PrintASCII(const Unit &U, const char *PrintAfter = "");
-std::string Hash(const Unit &U);
-void SetTimer(int Seconds);
-void PrintFileAsBase64(const std::string &Path);
-void ExecuteCommand(const std::string &Command);
-
-// Private copy of SHA1 implementation.
-static const int kSHA1NumBytes = 20;
-// Computes SHA1 hash of 'Len' bytes in 'Data', writes kSHA1NumBytes to 'Out'.
-void ComputeSHA1(const uint8_t *Data, size_t Len, uint8_t *Out);
-
-int NumberOfCpuCores();
-
 class Fuzzer {
- public:
-  struct FuzzingOptions {
-    int Verbosity = 1;
-    int MaxLen = 0;
-    int UnitTimeoutSec = 300;
-    bool DoCrossOver = true;
-    int  MutateDepth = 5;
-    bool ExitOnFirst = false;
-    bool UseCounters = false;
-    bool UseTraces = false;
-    bool UseFullCoverageSet  = false;
-    bool Reload = true;
-    int PreferSmallDuringInitialShuffle = -1;
-    size_t MaxNumberOfRuns = ULONG_MAX;
-    int SyncTimeout = 600;
-    std::string OutputCorpus;
-    std::string SyncCommand;
-    std::vector<std::string> Tokens;
-  };
-  Fuzzer(UserSuppliedFuzzer &USF, FuzzingOptions Options);
-  void AddToCorpus(const Unit &U) { Corpus.push_back(U); }
-  void Loop(size_t NumIterations);
-  void ShuffleAndMinimize();
+public:
+
+  Fuzzer(UserCallback CB, InputCorpus &Corpus, MutationDispatcher &MD,
+         FuzzingOptions Options);
+  ~Fuzzer();
+  void Loop();
+  void MinimizeCrashLoop(const Unit &U);
+  void ShuffleAndMinimize(UnitVector *V);
   void InitializeTraceState();
-  size_t CorpusSize() const { return Corpus.size(); }
-  void ReadDir(const std::string &Path, long *Epoch) {
-    ReadDirToVectorOfUnits(Path.c_str(), &Corpus, Epoch);
-  }
-  void RereadOutputCorpus();
-  // Save the current corpus to OutputCorpus.
-  void SaveCorpus();
+  void RereadOutputCorpus(size_t MaxSize);
 
   size_t secondsSinceProcessStartUp() {
     return duration_cast<seconds>(system_clock::now() - ProcessStartTime)
         .count();
   }
 
+  bool TimedOut() {
+    return Options.MaxTotalTimeSec > 0 &&
+           secondsSinceProcessStartUp() >
+               static_cast<size_t>(Options.MaxTotalTimeSec);
+  }
+
+  size_t execPerSec() {
+    size_t Seconds = secondsSinceProcessStartUp();
+    return Seconds ? TotalNumberOfRuns / Seconds : 0;
+  }
+
   size_t getTotalNumberOfRuns() { return TotalNumberOfRuns; }
 
   static void StaticAlarmCallback();
+  static void StaticCrashSignalCallback();
+  static void StaticInterruptCallback();
+  static void StaticFileSizeExceedCallback();
 
-  Unit SubstituteTokens(const Unit &U) const;
+  void ExecuteCallback(const uint8_t *Data, size_t Size);
+  size_t RunOne(const uint8_t *Data, size_t Size);
 
- private:
+  // Merge Corpora[1:] into Corpora[0].
+  void Merge(const std::vector<std::string> &Corpora);
+  void CrashResistantMerge(const std::vector<std::string> &Args,
+                           const std::vector<std::string> &Corpora,
+                           const char *CoverageSummaryInputPathOrNull,
+                           const char *CoverageSummaryOutputPathOrNull);
+  void CrashResistantMergeInternalStep(const std::string &ControlFilePath);
+  MutationDispatcher &GetMD() { return MD; }
+  void PrintFinalStats();
+  void SetMaxInputLen(size_t MaxInputLen);
+  void SetMaxMutationLen(size_t MaxMutationLen);
+  void RssLimitCallback();
+
+  bool InFuzzingThread() const { return IsMyThread; }
+  size_t GetCurrentUnitInFuzzingThead(const uint8_t **Data) const;
+  void TryDetectingAMemoryLeak(const uint8_t *Data, size_t Size,
+                               bool DuringInitialCorpusExecution);
+
+  void HandleMalloc(size_t Size);
+  void AnnounceOutput(const uint8_t *Data, size_t Size);
+
+private:
   void AlarmCallback();
-  void ExecuteCallback(const Unit &U);
-  void MutateAndTestOne(Unit *U);
-  void ReportNewCoverage(size_t NewCoverage, const Unit &U);
-  size_t RunOne(const Unit &U);
-  void RunOneAndUpdateCorpus(const Unit &U);
-  size_t RunOneMaximizeTotalCoverage(const Unit &U);
-  size_t RunOneMaximizeFullCoverageSet(const Unit &U);
-  size_t RunOneMaximizeCoveragePairs(const Unit &U);
+  void CrashCallback();
+  void CrashOnOverwrittenData();
+  void InterruptCallback();
+  void MutateAndTestOne();
+  void ReportNewCoverage(InputInfo *II, const Unit &U);
+  size_t RunOne(const Unit &U) { return RunOne(U.data(), U.size()); }
   void WriteToOutputCorpus(const Unit &U);
   void WriteUnitToFileWithPrefix(const Unit &U, const char *Prefix);
-  void PrintStats(const char *Where, size_t Cov, const char *End = "\n");
-  void PrintUnitInASCIIOrTokens(const Unit &U, const char *PrintAfter = "");
-
-  void SyncCorpus();
+  void PrintStats(const char *Where, const char *End = "\n", size_t Units = 0);
+  void PrintStatusForNewUnit(const Unit &U);
+  void ShuffleCorpus(UnitVector *V);
+  void AddToCorpus(const Unit &U);
+  void CheckExitOnSrcPosOrItem();
 
   // Trace-based fuzzing: we run a unit with some kind of tracing
   // enabled and record potentially useful mutations. Then
@@ -122,49 +110,42 @@ class Fuzzer {
 
   // Start tracing; forget all previously proposed mutations.
   void StartTraceRecording();
-  // Stop tracing and return the number of proposed mutations.
-  size_t StopTraceRecording();
-  // Apply Idx-th trace-based mutation to U.
-  void ApplyTraceBasedMutation(size_t Idx, Unit *U);
+  // Stop tracing.
+  void StopTraceRecording();
 
-  void SetDeathCallback();
   static void StaticDeathCallback();
+  void DumpCurrentUnit(const char *Prefix);
   void DeathCallback();
-  Unit CurrentUnit;
+
+  void AllocateCurrentUnitData();
+  uint8_t *CurrentUnitData = nullptr;
+  std::atomic<size_t> CurrentUnitSize;
+  uint8_t BaseSha1[kSHA1NumBytes];  // Checksum of the base unit.
+  bool RunningCB = false;
 
   size_t TotalNumberOfRuns = 0;
+  size_t NumberOfNewUnitsAdded = 0;
 
-  std::vector<Unit> Corpus;
-  std::unordered_set<std::string> UnitHashesAddedToCorpus;
-  std::unordered_set<uintptr_t> FullCoverageSets;
+  bool HasMoreMallocsThanFrees = false;
+  size_t NumberOfLeakDetectionAttempts = 0;
 
-  // For UseCounters
-  std::vector<uint8_t> CounterBitmap;
-  size_t TotalBits() {  // Slow. Call it only for printing stats.
-    size_t Res = 0;
-    for (auto x : CounterBitmap) Res += __builtin_popcount(x);
-    return Res;
-  }
-
-  UserSuppliedFuzzer &USF;
+  UserCallback CB;
+  InputCorpus &Corpus;
+  MutationDispatcher &MD;
   FuzzingOptions Options;
+
   system_clock::time_point ProcessStartTime = system_clock::now();
-  system_clock::time_point LastExternalSync = system_clock::now();
-  system_clock::time_point UnitStartTime;
+  system_clock::time_point UnitStartTime, UnitStopTime;
   long TimeOfLongestUnitInSeconds = 0;
   long EpochOfLastReadOfOutputCorpus = 0;
+
+  size_t MaxInputLen = 0;
+  size_t MaxMutationLen = 0;
+
+  // Need to know our own thread.
+  static thread_local bool IsMyThread;
 };
 
-class SimpleUserSuppliedFuzzer: public UserSuppliedFuzzer {
- public:
-  SimpleUserSuppliedFuzzer(FuzzerRandomBase *Rand, UserCallback Callback)
-      : UserSuppliedFuzzer(Rand), Callback(Callback) {}
-  virtual void TargetFunction(const uint8_t *Data, size_t Size) {
-    return Callback(Data, Size);
-  }
+} // namespace fuzzer
 
- private:
-  UserCallback Callback;
-};
-
-};  // namespace fuzzer
+#endif // LLVM_FUZZER_INTERNAL_H

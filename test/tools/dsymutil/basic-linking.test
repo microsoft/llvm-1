@@ -1,6 +1,7 @@
-RUN: llvm-dsymutil -no-output -v -oso-prepend-path=%p %p/Inputs/basic.macho.x86_64 | FileCheck %s
-RUN: llvm-dsymutil -no-output -v -oso-prepend-path=%p %p/Inputs/basic-lto.macho.x86_64 | FileCheck %s --check-prefix=CHECK-LTO
-RUN: llvm-dsymutil -no-output -v -oso-prepend-path=%p %p/Inputs/basic-archive.macho.x86_64 | FileCheck %s --check-prefix=CHECK-ARCHIVE
+RUN: llvm-dsymutil -no-output -verbose -oso-prepend-path=%p %p/Inputs/basic.macho.x86_64 | FileCheck %s
+RUN: llvm-dsymutil -no-output -verbose -oso-prepend-path=%p %p/Inputs/basic-lto.macho.x86_64 | FileCheck %s --check-prefix=CHECK-LTO
+RUN: llvm-dsymutil -no-output -verbose -oso-prepend-path=%p %p/Inputs/basic-archive.macho.x86_64 | FileCheck %s --check-prefix=CHECK-ARCHIVE
+RUN: llvm-dsymutil -no-output -verbose -oso-prepend-path=%p %p/Inputs/basic.macho.x86_64 %p/Inputs/basic-lto.macho.x86_64 %p/Inputs/basic-archive.macho.x86_64 | FileCheck %s --check-prefix=CHECK --check-prefix=CHECK-LTO --check-prefix=CHECK-ARCHIVE 
 
 This test check the basic Dwarf linking process through the debug dumps.
 
@@ -43,7 +44,7 @@ CHECK-NEXT: TAG_compile_unit
 CHECK-NOT: TAG
 CHECK: AT_name {{.*}}basic3.c
 CHECK-NOT: Found valid debug map entry
-CHECK: Found valid debug map entry: _val 	0000000000000004 => 0000000100001004
+CHECK: Found valid debug map entry: _val 	ffffffffffffffff => 0000000100001004
 CHECK-NEXT: DW_TAG_variable
 CHECK-NEXT:   DW_AT_name {{.*}}"val"
 CHECK-NOT: Found valid debug map entry
@@ -136,7 +137,7 @@ CHECK-ARCHIVE-NEXT: TAG_compile_unit
 CHECK-ARCHIVE-NOT: TAG
 CHECK-ARCHIVE: AT_name {{.*}}basic3.c
 CHECK-ARCHIVE-NOT: Found valid debug map entry
-CHECK-ARCHIVE: Found valid debug map entry: _val 	0000000000000004 => 0000000100001008
+CHECK-ARCHIVE: Found valid debug map entry: _val 	ffffffffffffffff => 0000000100001008
 CHECK-ARCHIVE-NEXT: DW_TAG_variable
 CHECK-ARCHIVE-NEXT:   DW_AT_name {{.*}}"val"
 CHECK-ARCHIVE-NOT: Found valid debug map entry

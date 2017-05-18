@@ -25,13 +25,14 @@ required_libraries =
  BitWriter
  CodeGen
  Core
- IPA
  IPO
  InstCombine
  Linker
  MC
  ObjCARC
  Object
+ Passes
  Scalar
  Support
  Target
+ TransformUtils

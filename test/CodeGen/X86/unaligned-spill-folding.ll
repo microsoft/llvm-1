@@ -1,6 +1,6 @@
 ; RUN: llc -mtriple=i386-unknown-freebsd -mcpu=core2 -stack-alignment=4 -relocation-model=pic < %s | FileCheck %s -check-prefix=UNALIGNED
 ; RUN: llc -mtriple=i386-unknown-freebsd -mcpu=core2 -stack-alignment=16 -relocation-model=pic < %s | FileCheck %s -check-prefix=ALIGNED
-; RUN: llc -mtriple=i386-unknown-freebsd -mcpu=core2 -stack-alignment=4 -force-align-stack -relocation-model=pic < %s | FileCheck %s -check-prefix=FORCEALIGNED
+; RUN: llc -mtriple=i386-unknown-freebsd -mcpu=core2 -stack-alignment=4 -stackrealign -relocation-model=pic < %s | FileCheck %s -check-prefix=FORCEALIGNED
 
 @arr = internal unnamed_addr global [32 x i32] zeroinitializer, align 16
 
@@ -34,7 +34,7 @@ middle.block:
 ; doesn't force stack realignment though
 ; UNALIGNED-LABEL: @test1
 ; UNALIGNED-NOT: andl $-{{..}}, %esp
-; UNALIGNED: movdqu {{.*}} # 16-byte Folded Spill
+; UNALIGNED: movdqu {{.*}} # 16-byte Spill
 ; UNALIGNED-NOT: paddd {{.*}} # 16-byte Folded Reload
 
 ; ALIGNED-LABEL: @test1
